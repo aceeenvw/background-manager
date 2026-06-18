@@ -1,0 +1,1003 @@
+/* ⊹ BACKGROUND MANAGER ⊹ — theme-aware styling.
+ * Signature: the panel only renders fully when [data-build] is present (set in
+ * JS from the aceenvw build stamp); removing it strips the panel chrome. */
+
+:root {
+    --bgm-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.96)) 88%, rgba(255, 255, 255, 0.03) 12%);
+    --bgm-surface-strong: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.98)) 80%, rgba(255, 255, 255, 0.08) 20%);
+    --bgm-surface-soft: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.98)) 72%, rgba(255, 255, 255, 0.14) 28%);
+    --bgm-border: color-mix(in srgb, var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.16)) 80%, rgba(255, 255, 255, 0.12) 20%);
+    --bgm-accent: var(--SmartThemeQuoteColor, #6aa9ff);
+    --bgm-accent-soft: color-mix(in srgb, var(--SmartThemeQuoteColor, #6aa9ff) 18%, var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.98)) 82%);
+    --bgm-text: var(--SmartThemeBodyColor, #f2f0eb);
+    --bgm-muted: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f0eb) 64%, var(--SmartThemeEmColor, #9b9b9b) 36%);
+    --bgm-danger: #e06464;
+    --bgm-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+    --bgm-radius: 16px;
+}
+
+.bgm_hidden {
+    display: none !important;
+}
+
+/* ── Settings button in extensions panel ── */
+.background-manager-settings #bgm_open_button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── Modal shell ── */
+.bgm_modal {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    color: var(--bgm-text);
+    font-size: 0.95rem;
+}
+
+.bgm_backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.66);
+    backdrop-filter: blur(8px);
+}
+
+/* The panel chrome is gated on the build stamp (signature anti-tamper). */
+.bgm_modal[data-build=""] .bgm_panel {
+    box-shadow: none;
+    border-color: transparent;
+}
+
+.bgm_panel {
+    position: relative;
+    width: min(1400px, calc(100vw - 28px));
+    height: min(880px, calc(100vh - var(--topBarBlockSize, 0px) - 24px));
+    margin: calc(var(--topBarBlockSize, 0px) + 8px) auto 16px;
+    padding: 16px;
+    border: 1px solid var(--bgm-border);
+    border-radius: 20px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bgm-accent) 9%, transparent) 0%, transparent 16%),
+        var(--bgm-surface);
+    box-shadow: var(--bgm-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+    container-type: inline-size;
+    container-name: bgm-panel;
+}
+
+/* ── Header ── */
+.bgm_header,
+.bgm_toolbar,
+.bgm_chat_bar,
+.bgm_select_bar,
+.bgm_main_header,
+.bgm_folder_row {
+    display: flex;
+    align-items: center;
+}
+
+.bgm_header {
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.bgm_header_copy h2 {
+    margin: 0;
+    font-size: 1.18rem;
+    letter-spacing: 0.04em;
+}
+
+.bgm_header_copy p,
+.bgm_sidebar_header p,
+.bgm_summary,
+.bgm_breadcrumb,
+.bgm_status {
+    color: var(--bgm-muted);
+}
+
+.bgm_header_copy p {
+    margin: 3px 0 0;
+    font-size: 0.86rem;
+}
+
+.bgm_header_actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.bgm_modal .menu_button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    filter: none;
+}
+
+/* ── Per-chat scope bar ── */
+.bgm_chat_bar {
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 14px;
+    border: 1px solid var(--bgm-border);
+    border-radius: var(--bgm-radius);
+    background: var(--bgm-surface-strong);
+    transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.bgm_chat_bar.is-linked {
+    border-color: color-mix(in srgb, var(--bgm-accent) 50%, var(--bgm-border) 50%);
+    background: var(--bgm-accent-soft);
+}
+
+.bgm_chat_bar_label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 0.9rem;
+    min-width: 0;
+}
+
+.bgm_chat_bar_label i {
+    color: var(--bgm-accent);
+}
+
+.bgm_chat_bar_label span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bgm_scope_toggle {
+    display: inline-flex;
+    border: 1px solid var(--bgm-border);
+    border-radius: 999px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.bgm_scope_btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: transparent;
+    color: var(--bgm-muted);
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.bgm_scope_btn.is-active {
+    background: var(--bgm-accent);
+    color: #fff;
+}
+
+.bgm_scope_btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Global background card (the single global selector) ── */
+.bgm_global_card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, #2f8f4e 30%, var(--bgm-border) 70%);
+    border-radius: var(--bgm-radius);
+    background: color-mix(in srgb, #2f8f4e 10%, var(--bgm-surface-strong) 90%);
+}
+
+.bgm_global_thumb {
+    width: 96px;
+    height: 54px; /* 16:9 */
+    flex: 0 0 96px;
+    border-radius: 10px;
+    border: 1px solid var(--bgm-border);
+    background-color: rgba(0, 0, 0, 0.25);
+    background-size: cover;
+    background-position: center;
+}
+
+.bgm_global_thumb.is-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bgm_global_info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.bgm_global_heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: color-mix(in srgb, #3aa564 80%, var(--bgm-muted) 20%);
+}
+
+.bgm_global_name {
+    font-size: 0.98rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bgm_global_hint {
+    font-size: 0.78rem;
+    color: var(--bgm-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bgm_global_change {
+    flex: 0 0 auto;
+}
+
+/* ── Global picker popup grid ── */
+.bgm_pick_heading {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+}
+
+.bgm_pick_grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.bgm_pick_tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--bgm-border);
+    border-radius: 12px;
+    background: var(--bgm-surface-strong);
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+
+.bgm_pick_tile:hover {
+    border-color: color-mix(in srgb, var(--bgm-accent) 45%, var(--bgm-border) 55%);
+}
+
+.bgm_pick_tile:active {
+    transform: scale(0.98);
+}
+
+.bgm_pick_tile.is-current {
+    border-color: color-mix(in srgb, #2f8f4e 55%, var(--bgm-border) 45%);
+    background: color-mix(in srgb, #2f8f4e 16%, var(--bgm-surface-strong) 84%);
+}
+
+.bgm_pick_thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.3);
+    background-size: cover;
+    background-position: center;
+}
+
+.bgm_pick_name {
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Selection bar ── */
+.bgm_select_bar {
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--bgm-accent) 36%, var(--bgm-border) 64%);
+    border-radius: var(--bgm-radius);
+    background: var(--bgm-accent-soft);
+}
+
+.bgm_select_count {
+    font-weight: 600;
+    margin-right: auto;
+}
+
+.bgm_btn_danger,
+.bgm_folder_tool[data-bgm-folder-action="delete-folder"]:hover {
+    color: var(--bgm-danger) !important;
+}
+
+/* ── Toolbar (search + filter on one compact row) ── */
+.bgm_toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.bgm_search_wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.bgm_search_wrap i {
+    position: absolute;
+    left: 10px;
+    font-size: 0.85rem;
+    color: var(--bgm-muted);
+    pointer-events: none;
+}
+
+.bgm_search_wrap input {
+    width: 100%;
+    height: 32px;
+    padding-left: 30px;
+}
+
+.bgm_toolbar #bgm_sort {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 130px;
+    height: 32px;
+}
+
+/* Toolbar buttons: compact; labels drop on narrow panels. */
+.bgm_toolbar .menu_button {
+    flex: 0 0 auto;
+    height: 32px;
+    white-space: nowrap;
+}
+
+@container bgm-panel (max-width: 620px) {
+    .bgm_toolbar .menu_button span {
+        display: none;
+    }
+}
+
+/* Fallback for browsers without container queries. */
+@media (max-width: 620px) {
+    .bgm_toolbar .menu_button span {
+        display: none;
+    }
+}
+
+/* ── Content layout ── */
+.bgm_content {
+    position: relative;
+    display: flex;
+    gap: 14px;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.bgm_sidebar {
+    width: 230px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid var(--bgm-border);
+    border-radius: var(--bgm-radius);
+    background: var(--bgm-surface-strong);
+    padding: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.bgm_sidebar_header h3 {
+    margin: 0;
+    font-size: 0.98rem;
+}
+
+.bgm_sidebar_header p {
+    margin: 3px 0 6px;
+    font-size: 0.78rem;
+}
+
+.bgm_folder_tree {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.bgm_folder_row {
+    gap: 4px;
+    border-radius: 10px;
+    padding: 2px;
+    transition: background 0.15s ease;
+}
+
+.bgm_folder_row.is-selected {
+    background: var(--bgm-accent-soft);
+}
+
+.bgm_folder_row.is-drop-target {
+    outline: 2px dashed var(--bgm-accent);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--bgm-accent) 22%, transparent 78%);
+}
+
+.bgm_folder_button {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    padding: 8px 9px;
+    background: transparent;
+    border: none;
+    color: var(--bgm-text);
+    cursor: pointer;
+    border-radius: 9px;
+    text-align: left;
+}
+
+.bgm_folder_button:hover {
+    background: var(--bgm-surface-soft);
+}
+
+.bgm_folder_name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bgm_folder_count {
+    font-size: 0.74rem;
+    color: var(--bgm-muted);
+    background: var(--bgm-surface);
+    padding: 1px 7px;
+    border-radius: 999px;
+}
+
+.bgm_folder_tools {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.bgm_folder_row:hover .bgm_folder_tools {
+    opacity: 1;
+}
+
+.bgm_folder_tool {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--bgm-muted);
+    cursor: pointer;
+    border-radius: 7px;
+}
+
+.bgm_folder_tool:hover {
+    background: var(--bgm-surface-soft);
+    color: var(--bgm-text);
+}
+
+/* ── Main column ── */
+.bgm_main {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0; /* allow the inner list (.bgm_grid) to scroll instead of overflowing */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bgm_main_header {
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.bgm_breadcrumb {
+    font-weight: 600;
+    font-size: 0.96rem;
+}
+
+.bgm_summary {
+    font-size: 0.82rem;
+}
+
+.bgm_status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 28px 0;
+    color: var(--bgm-muted);
+}
+
+/* ── List ── (only the list scrolls; thumb size via --bgm-thumb-w) */
+.bgm_grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px;
+    --bgm-thumb-w: 104px;
+    --bgm-thumb-h: 58px;   /* ~16:9 */
+}
+
+.bgm_grid[data-thumb="small"] {
+    gap: 6px;
+    --bgm-thumb-w: 72px;
+    --bgm-thumb-h: 41px;
+}
+
+.bgm_grid[data-thumb="large"] {
+    gap: 10px;
+    --bgm-thumb-w: 150px;
+    --bgm-thumb-h: 84px;
+}
+
+/* ── Row ── */
+.bgm_row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--bgm-border);
+    border-radius: 12px;
+    background: var(--bgm-surface-strong);
+    transition: border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+}
+
+.bgm_row:hover {
+    border-color: color-mix(in srgb, var(--bgm-accent) 38%, var(--bgm-border) 62%);
+    background: var(--bgm-surface-soft);
+}
+
+.bgm_row.is-selected {
+    border-color: var(--bgm-accent);
+    box-shadow: 0 0 0 1px var(--bgm-accent) inset;
+    background: var(--bgm-accent-soft);
+}
+
+.bgm_row.is-linked {
+    border-left: 3px solid var(--bgm-accent);
+    padding-left: 8px;
+}
+
+.bgm_row.is-dragging {
+    opacity: 0.45;
+}
+
+/* Selection checkbox */
+.bgm_row_check {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--bgm-muted);
+    cursor: pointer;
+    border-radius: 7px;
+    font-size: 1rem;
+}
+
+.bgm_row.is-selected .bgm_row_check {
+    color: var(--bgm-accent);
+}
+
+/* Thumbnail */
+.bgm_row_thumb {
+    position: relative;
+    flex: 0 0 auto;
+    width: var(--bgm-thumb-w);
+    height: var(--bgm-thumb-h);
+    border-radius: 8px;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--bgm-surface);
+    cursor: pointer;
+    border: 1px solid var(--bgm-border);
+}
+
+.bgm_row_thumb_film {
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 0.65rem;
+}
+
+/* Main content */
+.bgm_row_main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.bgm_row_title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+    border-radius: 5px;
+    padding: 1px 4px;
+    margin: -1px -4px;
+    max-width: max-content;
+}
+
+.bgm_row_title:hover {
+    background: var(--bgm-surface);
+    outline: 1px dashed var(--bgm-border);
+}
+
+.bgm_row_name_input {
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 3px 6px;
+    width: min(100%, 320px);
+}
+
+.bgm_row_meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-height: 0;
+}
+
+.bgm_badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    font-size: 0.68rem;
+    border-radius: 999px;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.bgm_badge.is-global { background: color-mix(in srgb, #2f8f4e 82%, black); }
+.bgm_badge.is-linked { background: color-mix(in srgb, var(--bgm-accent) 86%, black); }
+.bgm_badge.is-animated { background: color-mix(in srgb, #8a5cd0 82%, black); }
+
+/* Actions */
+.bgm_row_actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.bgm_row_btn {
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+    padding: 0;
+    flex: 0 0 auto;
+}
+
+.bgm_row_btn.is-active {
+    color: var(--bgm-accent);
+    border-color: color-mix(in srgb, var(--bgm-accent) 50%, var(--bgm-border) 50%);
+    background: var(--bgm-accent-soft);
+}
+
+.bgm_row_btn.bgm_disabled,
+.bgm_row_thumb.bgm_disabled {
+    opacity: 0.5;
+}
+
+.bgm_row_btn.bgm_disabled_mode,
+.bgm_row_thumb.bgm_disabled_mode {
+    cursor: not-allowed;
+}
+
+/* Linkable thumbnail affordance (per-chat mode, chat open). */
+.bgm_row_thumb[data-bgm-card-action]:not(.bgm_disabled) {
+    cursor: pointer;
+}
+
+.bgm_row_btn_danger:hover {
+    color: var(--bgm-danger) !important;
+}
+
+/* ── Mobile sidebar toggle ── */
+.bgm_sidebar_toggle {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--bgm-border);
+    border-radius: var(--bgm-radius);
+    background: var(--bgm-surface-strong);
+    color: var(--bgm-text);
+    cursor: pointer;
+}
+
+.bgm_sidebar_toggle_label {
+    flex: 1 1 auto;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Drag ghost ── */
+.bgm_drag_ghost {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 200px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: var(--bgm-surface-strong);
+    border: 1px solid var(--bgm-accent);
+    color: var(--bgm-text);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -120%);
+}
+
+/* ── Mobile ── */
+@media (max-width: 900px) {
+    .bgm_panel {
+        width: 100vw;
+        /* Clear ST's native top bar so the header isn't overlapped. */
+        height: calc(100dvh - var(--topBarBlockSize, 0px));
+        margin: var(--topBarBlockSize, 0px) 0 0;
+        border-radius: 0;
+        border: none;
+        padding: 12px;
+    }
+
+    .bgm_sidebar_toggle {
+        display: flex;
+    }
+
+    /* Header: truncate title, action buttons become icon-only. */
+    .bgm_header {
+        gap: 8px;
+    }
+
+    .bgm_header_copy {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .bgm_header_copy h2 {
+        font-size: 1.02rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bgm_header_actions {
+        flex: 0 0 auto;
+        gap: 6px;
+    }
+
+    .bgm_header_actions .menu_button {
+        width: 38px;
+        height: 38px;
+        justify-content: center;
+        padding: 0;
+        gap: 0;
+    }
+
+    .bgm_header_actions .menu_button span {
+        display: none;
+    }
+
+    /* Selection bar: compact single row of icon-only buttons. */
+    .bgm_select_bar {
+        gap: 6px;
+        flex-wrap: nowrap;
+        padding: 6px 8px;
+    }
+
+    .bgm_select_count {
+        font-size: 0.8rem;
+    }
+
+    .bgm_select_bar .menu_button {
+        width: 36px;
+        height: 36px;
+        justify-content: center;
+        padding: 0;
+        gap: 0;
+        flex: 0 0 auto;
+    }
+
+    .bgm_select_bar .menu_button span {
+        display: none;
+    }
+
+    .bgm_content {
+        flex-direction: column;
+    }
+
+    .bgm_sidebar {
+        position: absolute;
+        top: 46px;
+        left: 0;
+        right: 0;
+        z-index: 5;
+        width: auto;
+        max-height: 60%;
+        box-shadow: var(--bgm-shadow);
+    }
+
+    .bgm_sidebar.is-collapsed {
+        display: none;
+    }
+
+    .bgm_chat_bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 9px;
+    }
+
+    .bgm_scope_toggle {
+        justify-content: center;
+    }
+
+    .bgm_scope_btn {
+        flex: 1 1 0;
+        justify-content: center;
+    }
+
+    /* Global card: thumb + name on one line, Change button full-width. */
+    .bgm_global_card {
+        flex-wrap: wrap;
+        gap: 9px 10px;
+        padding: 9px 11px;
+    }
+
+    .bgm_global_thumb {
+        width: 72px;
+        height: 41px;
+        flex: 0 0 72px;
+    }
+
+    .bgm_global_hint {
+        display: none;
+    }
+
+    .bgm_global_change {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+
+    .bgm_pick_grid {
+        grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+        gap: 8px;
+    }
+
+    .bgm_header_copy p {
+        display: none;
+    }
+
+    /* Mobile row: single strip, compact fixed-size icon actions (no wrap). */
+    .bgm_row {
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 10px;
+    }
+
+    .bgm_row_check {
+        width: 28px;
+        height: 28px;
+        flex: 0 0 auto;
+    }
+
+    .bgm_row_thumb {
+        width: 64px;
+        flex: 0 0 64px;
+        aspect-ratio: 16 / 10;
+        height: auto;
+    }
+
+    .bgm_row_main {
+        gap: 2px;
+    }
+
+    .bgm_row_title {
+        font-size: 0.84rem;
+    }
+
+    .bgm_row_meta {
+        gap: 3px;
+    }
+
+    .bgm_badge {
+        padding: 1px 5px;
+        font-size: 0.6rem;
+    }
+
+    /* Compact icon buttons, no wrap. */
+    .bgm_row_actions {
+        gap: 3px;
+        flex-wrap: nowrap;
+        flex: 0 0 auto;
+    }
+
+    .bgm_row_btn {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 30px;
+        font-size: 0.72rem;
+    }
+}
+
+/* Very narrow phones: collapse badge text to keep the row tidy. */
+@media (max-width: 460px) {
+    .bgm_row_meta .bgm_badge span {
+        display: none;
+    }
+    .bgm_row_meta .bgm_badge {
+        padding: 2px 4px;
+    }
+}
+
+@media (pointer: coarse) {
+    .bgm_folder_button { min-height: 46px; }
+    .bgm_folder_tool { width: 40px; height: 40px; }
+    .bgm_folder_tools { opacity: 1; }
+    .bgm_grid { overscroll-behavior: contain; }
+    .bgm_global_change { min-height: 42px; }
+    .bgm_pick_grid { overscroll-behavior: contain; }
+}
+
+/* Tablet / desktop touch: larger row buttons (phones keep the compact size). */
+@media (pointer: coarse) and (min-width: 901px) {
+    .bgm_row_btn { width: 38px; height: 38px; }
+    .bgm_row_check { width: 36px; height: 36px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bgm_row,
+    .bgm_scope_btn,
+    .bgm_folder_tools,
+    .bgm_pick_tile {
+        transition: none;
+    }
+}

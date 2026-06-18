@@ -1,0 +1,128 @@
+<div id="bgm_modal" class="bgm_modal bgm_hidden" data-build="">
+    <div class="bgm_backdrop" data-bgm-action="close"></div>
+    <div class="bgm_panel">
+        <div class="bgm_header">
+            <div class="bgm_header_copy">
+                <h2 data-i18n="app.title">⊹ Background Manager ⊹</h2>
+                <p data-i18n="app.subtitle">Browse, organize and link backgrounds to chats.</p>
+            </div>
+            <div class="bgm_header_actions">
+                <button id="bgm_refresh" type="button" class="menu_button menu_button_icon interactable" title="Refresh" data-i18n-title="action.refresh">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span data-i18n="action.refresh">Refresh</span>
+                </button>
+                <button id="bgm_close" type="button" class="menu_button menu_button_icon interactable" data-bgm-action="close" title="Close" data-i18n-title="action.close">
+                    <i class="fa-solid fa-xmark"></i>
+                    <span data-i18n="action.close">Close</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Per-chat scope toggle -->
+        <div id="bgm_chat_bar" class="bgm_chat_bar">
+            <div class="bgm_chat_bar_label">
+                <i class="fa-solid fa-link"></i>
+                <span id="bgm_chat_bar_text" data-i18n="chat.bar.modeGlobal">Global mode</span>
+            </div>
+            <div class="bgm_scope_toggle" role="group" aria-label="Background scope mode">
+                <button id="bgm_scope_global" type="button" class="bgm_scope_btn is-active" data-bgm-scope="global">
+                    <i class="fa-solid fa-globe"></i>
+                    <span data-i18n="chat.scope.global">Global</span>
+                </button>
+                <button id="bgm_scope_chat" type="button" class="bgm_scope_btn" data-bgm-scope="chat">
+                    <i class="fa-solid fa-comments"></i>
+                    <span data-i18n="chat.scope.perchat">Per-chat</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Global background — the default every chat falls back to -->
+        <div id="bgm_global_card" class="bgm_global_card">
+            <div class="bgm_global_thumb" id="bgm_global_thumb" aria-hidden="true"></div>
+            <div class="bgm_global_info">
+                <span class="bgm_global_heading" data-i18n="global.heading">Global background</span>
+                <span class="bgm_global_name" id="bgm_global_name" data-i18n="global.none">No global background set</span>
+                <span class="bgm_global_hint" data-i18n="global.hint">Shown in every chat unless a chat has its own.</span>
+            </div>
+            <button id="bgm_global_change" type="button" class="menu_button interactable bgm_global_change" data-bgm-action="pick-global" data-i18n-title="global.change" title="Change">
+                <i class="fa-solid fa-globe"></i>
+                <span data-i18n="global.change">Change</span>
+            </button>
+        </div>
+
+        <!-- Selection bar -->
+        <div id="bgm_select_bar" class="bgm_select_bar bgm_hidden">
+            <span id="bgm_select_count" class="bgm_select_count">0 selected</span>
+            <button id="bgm_select_all" type="button" class="menu_button menu_button_icon interactable" title="Select all on page" data-i18n-title="action.selectAll">
+                <i class="fa-solid fa-check-double"></i>
+                <span data-i18n="action.selectAll">Select All</span>
+            </button>
+            <button id="bgm_deselect_all" type="button" class="menu_button menu_button_icon interactable" title="Clear selection" data-i18n-title="action.cancel">
+                <i class="fa-solid fa-xmark"></i>
+                <span data-i18n="action.cancel">Cancel</span>
+            </button>
+            <button id="bgm_bulk_move" type="button" class="menu_button menu_button_icon interactable" title="Move selected to folder" data-i18n-title="action.move">
+                <i class="fa-solid fa-folder-open"></i>
+                <span data-i18n="action.move">Move</span>
+            </button>
+            <button id="bgm_bulk_delete" type="button" class="menu_button menu_button_icon interactable bgm_btn_danger" title="Delete selected" data-i18n-title="action.delete">
+                <i class="fa-solid fa-trash-can"></i>
+                <span data-i18n="action.delete">Delete</span>
+            </button>
+        </div>
+
+        <div class="bgm_toolbar">
+            <div class="bgm_search_wrap">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input id="bgm_search" type="search" class="text_pole textarea_compact" placeholder="Search backgrounds" data-i18n-placeholder="toolbar.search">
+            </div>
+            <select id="bgm_sort" class="text_pole textarea_compact">
+                <option value="az" data-i18n="sort.az">Name A-Z</option>
+                <option value="za" data-i18n="sort.za">Name Z-A</option>
+                <option value="newest" data-i18n="sort.newest">Newest first</option>
+                <option value="oldest" data-i18n="sort.oldest">Oldest first</option>
+            </select>
+            <button id="bgm_upload" type="button" class="menu_button interactable">
+                <i class="fa-solid fa-upload"></i>
+                <span data-i18n="toolbar.upload">Upload</span>
+            </button>
+            <button id="bgm_new_folder" type="button" class="menu_button interactable">
+                <i class="fa-solid fa-folder-plus"></i>
+                <span data-i18n="toolbar.newFolder">New Folder</span>
+            </button>
+        </div>
+
+        <div class="bgm_content">
+            <button id="bgm_sidebar_toggle" type="button" class="bgm_sidebar_toggle" aria-label="Toggle folder sidebar">
+                <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+                <span id="bgm_sidebar_toggle_label" class="bgm_sidebar_toggle_label" data-i18n="folder.all">All</span>
+                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            </button>
+
+            <aside id="bgm_sidebar" class="bgm_sidebar is-collapsed">
+                <div class="bgm_sidebar_header">
+                    <div>
+                        <h3 data-i18n="folder.heading">Folders</h3>
+                        <p data-i18n="folder.hint">Drag backgrounds here to organize them.</p>
+                    </div>
+                </div>
+                <div id="bgm_folder_tree" class="bgm_folder_tree"></div>
+            </aside>
+
+            <section class="bgm_main">
+                <div class="bgm_main_header">
+                    <div id="bgm_breadcrumb" class="bgm_breadcrumb"></div>
+                    <div id="bgm_summary" class="bgm_summary"></div>
+                </div>
+                <div id="bgm_loading" class="bgm_status bgm_hidden">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span data-i18n="status.loading">Loading backgrounds...</span>
+                </div>
+                <div id="bgm_empty" class="bgm_status bgm_hidden"></div>
+                <div id="bgm_grid" class="bgm_grid"></div>
+            </section>
+        </div>
+
+        <input id="bgm_upload_input" type="file" accept="image/*,video/*,.mp4,.webm,.webp,.gif,.apng" hidden>
+    </div>
+</div>

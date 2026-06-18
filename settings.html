@@ -1,0 +1,41 @@
+<div class="background-manager-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>⊹ BACKGROUND MANAGER ⊹</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down up"></div>
+        </div>
+        <div class="inline-drawer-content" style="display: none;">
+
+            <div class="flex-container">
+                <button id="bgm_open_button" type="button" class="menu_button menu_button_icon interactable">
+                    <i class="fa-solid fa-images"></i>
+                    <span data-i18n="settings.open">Open Background Manager</span>
+                </button>
+            </div>
+
+            <hr />
+
+            <div class="flex-container">
+                <input id="bgm_hijack_drawer" type="checkbox" />
+                <label for="bgm_hijack_drawer" data-i18n="settings.hijack">Open manager instead of the default Backgrounds drawer</label>
+            </div>
+
+            <div class="flex-container">
+                <input id="bgm_confirm_apply" type="checkbox" />
+                <label for="bgm_confirm_apply" data-i18n="settings.confirmApply">Confirm before applying a background</label>
+            </div>
+
+            <hr />
+
+            <div>
+                <label for="bgm_thumb_size" data-i18n="settings.thumbSize">Thumbnail size</label>
+                <select id="bgm_thumb_size" class="text_pole textarea_compact">
+                    <option value="small" data-i18n="settings.thumb.small">Small</option>
+                    <option value="medium" data-i18n="settings.thumb.medium">Medium</option>
+                    <option value="large" data-i18n="settings.thumb.large">Large</option>
+                </select>
+            </div>
+
+        </div>
+    </div>
+</div>
