@@ -120,9 +120,19 @@
                 </div>
                 <div id="bgm_empty" class="bgm_status bgm_hidden"></div>
                 <div id="bgm_grid" class="bgm_grid"></div>
+                <div id="bgm_pager" class="bgm_pager bgm_hidden">
+                    <button id="bgm_pager_prev" type="button" class="menu_button menu_button_icon interactable" title="Previous page" data-i18n-title="pager.prev" aria-label="Previous page">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span id="bgm_pager_label" class="bgm_pager_label">1 / 1</span>
+                    <button id="bgm_pager_next" type="button" class="menu_button menu_button_icon interactable" title="Next page" data-i18n-title="pager.next" aria-label="Next page">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                    <span id="bgm_pager_range" class="bgm_pager_range"></span>
+                </div>
             </section>
         </div>
 
-        <input id="bgm_upload_input" type="file" accept="image/*,video/*,.mp4,.webm,.webp,.gif,.apng" hidden>
+        <input id="bgm_upload_input" type="file" multiple accept="image/*,video/*,.mp4,.webm,.webp,.gif,.apng" hidden>
     </div>
 </div>

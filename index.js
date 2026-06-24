@@ -24,12 +24,14 @@ const BG_METADATA_KEY = 'custom_background';   // per-chat lock (CSS url string)
 const LIST_METADATA_KEY = 'chat_backgrounds';  // per-chat uploads (relative paths)
 
 const THUMB_SIZES = Object.freeze(['small', 'medium', 'large']);
+const PAGE_SIZES = Object.freeze([10, 30, 60, 100]);
 
 const DEFAULT_SETTINGS = Object.freeze({
     hijackDrawer: true,
     confirmApply: false,
     thumbSize: 'medium',
     sort: 'az',
+    pageSize: 60,
     activeFolderId: null,
     // Scope mode: 'global' (all chats share global) | 'per-chat' (lock, else global).
     bgScope: 'global',
@@ -62,7 +64,7 @@ function buildStamp(version) {
         return '';
     }
 }
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 // ── Module state ──────────────────────────────────────────────────────────
 const state = {
@@ -75,10 +77,11 @@ const state = {
     activeFolderId: null,
     search: '',
     sort: DEFAULT_SETTINGS.sort,
+    pageSize: DEFAULT_SETTINGS.pageSize,
+    currentPage: 1,
     selected: new Set(),
     refreshToken: 0,
     dom: {},
-    observers: { drawer: null },
     boundChatHandler: false,
     suppressDrawerHijack: false,
 };
@@ -109,6 +112,9 @@ const I18N = {
         'folder.chat': 'This Chat',
         'status.loading': 'Loading backgrounds...',
         'status.empty': 'No backgrounds match this view yet.',
+        'pager.prev': 'Previous page',
+        'pager.next': 'Next page',
+        'pager.range': '{from}–{to} of {total}',
         'chat.bar.modeGlobal': 'Global mode — every chat shows the global background.',
         'chat.bar.modePerChat': 'Per-chat mode — each chat keeps its own background (global by default).',
         'chat.scope.global': 'Global',
@@ -122,6 +128,7 @@ const I18N = {
         'settings.hijack': 'Open manager instead of the default Backgrounds drawer',
         'settings.confirmApply': 'Confirm before applying a background',
         'settings.thumbSize': 'Thumbnail size',
+        'settings.pageSize': 'Backgrounds per page',
         'settings.thumb.small': 'Small',
         'settings.thumb.medium': 'Medium',
         'settings.thumb.large': 'Large',
@@ -130,9 +137,11 @@ const I18N = {
         'card.linkDisabledMode': 'Switch to Per-chat mode to link backgrounds.',
         'card.rename': 'Rename',
         'card.move': 'Move to folder',
+        'card.removeFromFolder': 'Remove from this folder',
         'card.delete': 'Delete',
         'badge.linked': 'Linked here',
         'badge.animated': 'Animated',
+        'badge.inFolders': '{n} folders',
         'toast.noChat': 'Open a chat first to link a background.',
         'toast.appliedGlobal': 'Set as global background.',
         'toast.linked': 'Linked to this chat.',
@@ -141,7 +150,10 @@ const I18N = {
         'toast.renamed': 'Background renamed.',
         'toast.nameExists': 'A background with that name already exists.',
         'toast.deleted': 'Background deleted.',
+        'toast.removedFromFolder': 'Removed from folder.',
         'toast.uploaded': 'Background uploaded.',
+        'toast.uploadedMany': '{n} backgrounds uploaded.',
+        'toast.uploadedPartial': '{ok} of {total} backgrounds uploaded.',
         'toast.folderCreated': 'Folder created.',
         'toast.folderRenamed': 'Folder renamed.',
         'toast.folderDeleted': 'Folder deleted.',
@@ -183,6 +195,9 @@ const I18N = {
         'folder.chat': 'Этот чат',
         'status.loading': 'Загрузка фонов...',
         'status.empty': 'Нет фонов для этого вида.',
+        'pager.prev': 'Предыдущая страница',
+        'pager.next': 'Следующая страница',
+        'pager.range': '{from}–{to} из {total}',
         'chat.bar.modeGlobal': 'Глобальный режим — во всех чатах общий фон.',
         'chat.bar.modePerChat': 'Режим «для чата» — у каждого чата свой фон (по умолчанию глобальный).',
         'chat.scope.global': 'Глобально',
@@ -196,6 +211,7 @@ const I18N = {
         'settings.hijack': 'Открывать менеджер вместо стандартной панели фонов',
         'settings.confirmApply': 'Подтверждать применение фона',
         'settings.thumbSize': 'Размер миниатюр',
+        'settings.pageSize': 'Фонов на странице',
         'settings.thumb.small': 'Маленький',
         'settings.thumb.medium': 'Средний',
         'settings.thumb.large': 'Большой',
@@ -204,9 +220,11 @@ const I18N = {
         'card.linkDisabledMode': 'Включите режим «для чата», чтобы привязывать фоны.',
         'card.rename': 'Переименовать',
         'card.move': 'В папку',
+        'card.removeFromFolder': 'Убрать из этой папки',
         'card.delete': 'Удалить',
         'badge.linked': 'Привязан',
         'badge.animated': 'Анимация',
+        'badge.inFolders': 'Папок: {n}',
         'toast.noChat': 'Сначала откройте чат для привязки фона.',
         'toast.appliedGlobal': 'Установлен как глобальный фон.',
         'toast.linked': 'Привязан к этому чату.',
@@ -215,7 +233,10 @@ const I18N = {
         'toast.renamed': 'Фон переименован.',
         'toast.nameExists': 'Фон с таким именем уже существует.',
         'toast.deleted': 'Фон удалён.',
+        'toast.removedFromFolder': 'Убрано из папки.',
         'toast.uploaded': 'Фон загружен.',
+        'toast.uploadedMany': 'Загружено фонов: {n}.',
+        'toast.uploadedPartial': 'Загружено {ok} из {total} фонов.',
         'toast.folderCreated': 'Папка создана.',
         'toast.folderRenamed': 'Папка переименована.',
         'toast.folderDeleted': 'Папка удалена.',
@@ -334,6 +355,7 @@ function getSettings() {
         if (!Object.hasOwn(s, key)) s[key] = DEFAULT_SETTINGS[key];
     }
     if (!THUMB_SIZES.includes(s.thumbSize)) s.thumbSize = DEFAULT_SETTINGS.thumbSize;
+    if (!PAGE_SIZES.includes(Number(s.pageSize))) s.pageSize = DEFAULT_SETTINGS.pageSize;
     return s;
 }
 
@@ -820,6 +842,23 @@ function renderChatBar() {
     state.dom.chatBar?.classList.toggle('is-linked', perChat);
 }
 
+// The active sidebar folder id, but only when it's a real folder (not one of
+// the virtual views or "all"). Returns null otherwise.
+function getActiveRealFolderId() {
+    const id = state.activeFolderId;
+    if (!id || ['__all__', '__unfiled__', '__chat__'].includes(id)) return null;
+    return state.folders.some((f) => f.id === id) ? id : null;
+}
+
+// Folder names a file belongs to (synchronous; reads the already-loaded map).
+function foldersOfFile(file) {
+    const ids = state.imageFolderMap[file];
+    if (!Array.isArray(ids) || !ids.length) return [];
+    return ids
+        .map((id) => state.folders.find((f) => f.id === id)?.name)
+        .filter((n) => typeof n === 'string' && n);
+}
+
 function countForFolder(id) {
     if (id === '__all__') return state.backgrounds.length;
     if (id === '__unfiled__') return state.backgrounds.filter((b) => !(state.imageFolderMap[b.file]?.length)).length;
@@ -918,6 +957,26 @@ function folderToolButton(action, folderId, title, icon) {
     return b;
 }
 
+// Total pages for a given visible count (>= 1).
+function totalPages(visibleCount) {
+    return Math.max(1, Math.ceil(visibleCount / state.pageSize));
+}
+
+// Clamp currentPage into range and return it.
+function clampCurrentPage(visibleCount) {
+    const pages = totalPages(visibleCount);
+    if (state.currentPage > pages) state.currentPage = pages;
+    if (state.currentPage < 1) state.currentPage = 1;
+    return state.currentPage;
+}
+
+// Slice the visible backgrounds down to the current page.
+function getBackgroundsOnPage(visible) {
+    const page = clampCurrentPage(visible.length);
+    const start = (page - 1) * state.pageSize;
+    return visible.slice(start, start + state.pageSize);
+}
+
 function renderGrid() {
     const grid = state.dom.grid;
     if (!grid) return;
@@ -928,11 +987,44 @@ function renderGrid() {
 
     if (!visible.length) {
         setEmptyMessage(state.isLoading ? '' : t('status.empty'));
+        renderPager(0);
         return;
     }
     setEmptyMessage('');
 
-    visible.forEach((bg) => grid.appendChild(createCard(bg)));
+    getBackgroundsOnPage(visible).forEach((bg) => grid.appendChild(createCard(bg)));
+    renderPager(visible.length);
+}
+
+// Pager: « prev · page X / Y · A–B of N · next ». Hidden when a single page.
+function renderPager(visibleCount) {
+    const pager = state.dom.pager;
+    if (!pager) return;
+    const pages = totalPages(visibleCount);
+    if (visibleCount === 0 || pages <= 1) {
+        pager.classList.add('bgm_hidden');
+        return;
+    }
+    pager.classList.remove('bgm_hidden');
+    const page = clampCurrentPage(visibleCount);
+    if (state.dom.pagerLabel) state.dom.pagerLabel.textContent = `${page} / ${pages}`;
+    if (state.dom.pagerRange) {
+        const from = (page - 1) * state.pageSize + 1;
+        const to = Math.min(page * state.pageSize, visibleCount);
+        state.dom.pagerRange.textContent = t('pager.range', { from, to, total: visibleCount });
+    }
+    state.dom.pagerPrev?.toggleAttribute('disabled', page <= 1);
+    state.dom.pagerNext?.toggleAttribute('disabled', page >= pages);
+}
+
+function goToPage(delta) {
+    const visible = getVisibleBackgrounds();
+    const pages = totalPages(visible.length);
+    const next = Math.min(pages, Math.max(1, state.currentPage + delta));
+    if (next === state.currentPage) return;
+    state.currentPage = next;
+    renderGrid();
+    state.dom.grid?.scrollTo?.({ top: 0 });
 }
 
 // Row layout: [✓] [thumb] [name + badges] [actions]. One baseline so action
@@ -989,9 +1081,16 @@ function createCard(bg) {
 
     const meta = document.createElement('div');
     meta.className = 'bgm_row_meta';
-    // Rows show only Linked/Animated; global is set in the card above.
+    // Rows show Linked/Animated/In-folder; global is set in the card above.
     if (linked) meta.appendChild(makeBadge(t('badge.linked'), 'fa-link', 'is-linked'));
     if (bg.isAnimated) meta.appendChild(makeBadge(t('badge.animated'), 'fa-film', 'is-animated'));
+    const folderNames = foldersOfFile(bg.file);
+    if (folderNames.length) {
+        const label = folderNames.length === 1 ? folderNames[0] : t('badge.inFolders', { n: folderNames.length });
+        const badge = makeBadge(label, 'fa-folder', 'is-folder');
+        badge.title = folderNames.join(', ');
+        meta.appendChild(badge);
+    }
 
     main.append(title, meta);
 
@@ -1022,7 +1121,16 @@ function createCard(bg) {
     const deleteBtn = cardIconButton('delete', t('card.delete'), 'fa-trash-can');
     deleteBtn.classList.add('bgm_row_btn', 'bgm_row_btn_danger');
 
-    actions.append(linkBtn, renameBtn, moveBtn, deleteBtn);
+    actions.append(linkBtn, renameBtn, moveBtn);
+
+    // Inside a real folder view: quick "remove from this folder" (→ Unfiled).
+    if (getActiveRealFolderId()) {
+        const removeBtn = cardIconButton('remove-from-folder', t('card.removeFromFolder'), 'fa-folder-minus');
+        removeBtn.classList.add('bgm_row_btn');
+        actions.append(removeBtn);
+    }
+
+    actions.append(deleteBtn);
 
     card.append(checkbox, thumb, main, actions);
     return card;
@@ -1097,6 +1205,9 @@ async function onCardAction(action, file) {
             break;
         case 'move':
             await moveBackgroundToFolder(file);
+            break;
+        case 'remove-from-folder':
+            await removeFromActiveFolder(file);
             break;
         case 'delete':
             await deleteBackground(file);
@@ -1229,6 +1340,22 @@ async function moveBackgroundToFolder(file) {
     }
 }
 
+// Quick-remove a background from the currently open folder (→ Unfiled if it
+// has no other folders). No-op unless a real folder view is active.
+async function removeFromActiveFolder(file) {
+    const folderId = getActiveRealFolderId();
+    if (!folderId) return;
+    try {
+        await apiFolderAssign([file], folderId, true);
+        state.selected.delete(file);
+        await refresh();
+        toastr.success(t('toast.removedFromFolder'));
+    } catch (err) {
+        console.error('[BGM] remove from folder failed', err);
+        toastr.error(t('toast.error'));
+    }
+}
+
 // Folder picker. Returns folderId, '' for none, or undefined if cancelled.
 async function pickFolder() {
     const ctx = getContext();
@@ -1260,7 +1387,56 @@ async function pickFolder() {
     return select.value;
 }
 
-// Global picker: thumbnail grid; a tile click resolves with the chosen file.
+// One clickable thumbnail tile for the global picker.
+function buildPickTile(bg, current, onPick) {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'bgm_pick_tile';
+    tile.dataset.file = bg.file;
+    tile.dataset.name = stripExtension(bg.file).toLowerCase();
+    if (bg.file === current) tile.classList.add('is-current');
+
+    const thumb = document.createElement('div');
+    thumb.className = 'bgm_pick_thumb';
+    thumb.style.backgroundImage = getBackgroundCssUrl(bg.file);
+
+    const name = document.createElement('span');
+    name.className = 'bgm_pick_name';
+    name.textContent = stripExtension(bg.file);
+
+    tile.append(thumb, name);
+    tile.addEventListener('click', () => onPick(bg.file));
+    return tile;
+}
+
+// Group backgrounds by folder. Returns ordered sections:
+// [{ id, name, items[] }] for real folders (A-Z) then an Unfiled section.
+function groupBackgroundsByFolder(list) {
+    const byFolder = new Map(); // folderId -> items
+    const unfiled = [];
+    for (const bg of list) {
+        const ids = state.imageFolderMap[bg.file];
+        if (Array.isArray(ids) && ids.length) {
+            for (const id of ids) {
+                if (!byFolder.has(id)) byFolder.set(id, []);
+                byFolder.get(id).push(bg);
+            }
+        } else {
+            unfiled.push(bg);
+        }
+    }
+    const sections = state.folders
+        .slice()
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .filter((f) => byFolder.has(f.id))
+        .map((f) => ({ id: f.id, name: f.name, items: byFolder.get(f.id) }));
+    if (unfiled.length) sections.push({ id: '__unfiled__', name: t('folder.unfiled'), items: unfiled });
+    return sections;
+}
+
+// Global picker: collapsible folder sections + search. A tile click resolves
+// with the chosen file. The first section starts open; the rest are collapsed.
+// The current global background is still highlighted via its tile.
 async function pickGlobalBackground() {
     const ctx = getContext();
     const Popup = ctx.Popup;
@@ -1274,6 +1450,7 @@ async function pickGlobalBackground() {
     }
 
     const current = getGlobalBgName();
+
     const container = document.createElement('div');
     container.className = 'bgm_pick_wrap';
 
@@ -1281,34 +1458,75 @@ async function pickGlobalBackground() {
     heading.className = 'bgm_pick_heading';
     heading.textContent = t('prompt.pickGlobalTitle');
 
-    const grid = document.createElement('div');
-    grid.className = 'bgm_pick_grid';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'bgm_pick_search';
+    const searchIcon = document.createElement('i');
+    searchIcon.className = 'fa-solid fa-magnifying-glass';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'text_pole';
+    searchInput.placeholder = t('toolbar.search');
+    searchWrap.append(searchIcon, searchInput);
+
+    const sectionsWrap = document.createElement('div');
+    sectionsWrap.className = 'bgm_pick_sections';
 
     let chosen;
     const instancePromise = { resolve: null };
+    const onPick = (file) => { chosen = file; instancePromise.resolve?.(); };
 
-    list.forEach((bg) => {
-        const tile = document.createElement('button');
-        tile.type = 'button';
-        tile.className = 'bgm_pick_tile';
-        if (bg.file === current) tile.classList.add('is-current');
+    const sections = groupBackgroundsByFolder(list);
+    const sectionEls = [];
 
-        const thumb = document.createElement('div');
-        thumb.className = 'bgm_pick_thumb';
-        thumb.style.backgroundImage = getBackgroundCssUrl(bg.file);
+    sections.forEach((section, index) => {
+        // Open just the first section by default; the rest start collapsed.
+        const open = index === 0;
 
-        const name = document.createElement('span');
-        name.className = 'bgm_pick_name';
-        name.textContent = stripExtension(bg.file);
+        const sectionEl = document.createElement('div');
+        sectionEl.className = 'bgm_pick_section' + (open ? '' : ' is-collapsed');
 
-        tile.append(thumb, name);
-        tile.addEventListener('click', () => {
-            chosen = bg.file;
-            instancePromise.resolve?.();
-        });
-        grid.appendChild(tile);
+        const header = document.createElement('button');
+        header.type = 'button';
+        header.className = 'bgm_pick_section_header';
+        const chevron = document.createElement('i');
+        chevron.className = 'fa-solid fa-chevron-down bgm_pick_chevron';
+        const folderIcon = document.createElement('i');
+        folderIcon.className = 'fa-solid fa-folder';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'bgm_pick_section_name';
+        nameSpan.textContent = section.name;
+        const countSpan = document.createElement('span');
+        countSpan.className = 'bgm_pick_section_count';
+        countSpan.textContent = String(section.items.length);
+        header.append(chevron, folderIcon, nameSpan, countSpan);
+        header.addEventListener('click', () => sectionEl.classList.toggle('is-collapsed'));
+
+        const grid = document.createElement('div');
+        grid.className = 'bgm_pick_grid';
+        section.items.forEach((bg) => grid.appendChild(buildPickTile(bg, current, onPick)));
+
+        sectionEl.append(header, grid);
+        sectionsWrap.appendChild(sectionEl);
+        sectionEls.push({ sectionEl, defaultOpen: open });
     });
-    container.append(heading, grid);
+
+    // Search across all folders; matching sections auto-expand, empties hide.
+    searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim().toLowerCase();
+        for (const { sectionEl, defaultOpen } of sectionEls) {
+            let anyVisible = false;
+            sectionEl.querySelectorAll('.bgm_pick_tile').forEach((tile) => {
+                const match = !q || tile.dataset.name.includes(q);
+                tile.classList.toggle('bgm_hidden', !match);
+                if (match) anyVisible = true;
+            });
+            sectionEl.classList.toggle('bgm_hidden', !anyVisible);
+            if (q) sectionEl.classList.toggle('is-collapsed', !anyVisible);
+            else sectionEl.classList.toggle('is-collapsed', !defaultOpen);
+        }
+    });
+
+    container.append(heading, searchWrap, sectionsWrap);
 
     const instance = new Popup(container, POPUP_TYPE?.TEXT ?? 1, '', {
         okButton: false,
@@ -1453,7 +1671,16 @@ async function onUploadInput(event) {
     }
     setLoading(false);
     await refresh();
-    if (uploaded) toastr.success(t('toast.uploaded'));
+    const failed = files.length - uploaded;
+    if (uploaded && failed) {
+        toastr.warning(t('toast.uploadedPartial', { ok: uploaded, total: files.length }));
+    } else if (uploaded > 1) {
+        toastr.success(t('toast.uploadedMany', { n: uploaded }));
+    } else if (uploaded) {
+        toastr.success(t('toast.uploaded'));
+    } else if (failed) {
+        toastr.error(t('toast.error'));
+    }
 }
 
 // Convert video uploads via the Video Background Loader global (if installed).
@@ -1507,6 +1734,11 @@ async function ensureDom() {
         loading: modal.querySelector('#bgm_loading'),
         empty: modal.querySelector('#bgm_empty'),
         grid: modal.querySelector('#bgm_grid'),
+        pager: modal.querySelector('#bgm_pager'),
+        pagerPrev: modal.querySelector('#bgm_pager_prev'),
+        pagerNext: modal.querySelector('#bgm_pager_next'),
+        pagerLabel: modal.querySelector('#bgm_pager_label'),
+        pagerRange: modal.querySelector('#bgm_pager_range'),
         selectBar: modal.querySelector('#bgm_select_bar'),
         selectCount: modal.querySelector('#bgm_select_count'),
         selectAll: modal.querySelector('#bgm_select_all'),
@@ -1536,11 +1768,12 @@ function bindEvents() {
         if (e.target.closest('[data-bgm-action="close"]')) closeManager();
     });
     d.refresh.addEventListener('click', () => refresh({ showLoader: true }));
-    d.search.addEventListener('input', () => { state.search = d.search.value; renderGrid(); renderHeader(); });
+    d.search.addEventListener('input', () => { state.search = d.search.value; state.currentPage = 1; renderGrid(); renderHeader(); });
     d.sort.addEventListener('change', () => {
         state.sort = d.sort.value;
         getSettings().sort = state.sort;
         saveSettings();
+        state.currentPage = 1;
         renderGrid();
     });
     d.upload.addEventListener('click', () => d.uploadInput.click());
@@ -1555,6 +1788,9 @@ function bindEvents() {
     d.grid.addEventListener('click', onGridClick);
     d.grid.addEventListener('dragstart', onCardDragStart);
     d.grid.addEventListener('dragend', onCardDragEnd);
+
+    d.pagerPrev?.addEventListener('click', () => goToPage(-1));
+    d.pagerNext?.addEventListener('click', () => goToPage(1));
 
     d.selectAll.addEventListener('click', onSelectAll);
     d.deselectAll.addEventListener('click', clearSelection);
@@ -1582,6 +1818,7 @@ function onFolderTreeClick(event) {
         state.activeFolderId = folderId === '__all__' ? null : folderId;
         getSettings().activeFolderId = state.activeFolderId;
         saveSettings();
+        state.currentPage = 1;
         clearSelection();
         render();
         collapseMobileSidebar();
@@ -1828,6 +2065,8 @@ async function openManager() {
     state.isOpen = true;
     state.activeFolderId = getSettings().activeFolderId || null;
     state.sort = getSettings().sort || 'az';
+    state.pageSize = Number(getSettings().pageSize) || DEFAULT_SETTINGS.pageSize;
+    state.currentPage = 1;
     state.dom.modal.classList.remove('bgm_hidden');
     state.dom.search.value = state.search;
     state.dom.sort.value = state.sort;
@@ -1877,19 +2116,18 @@ function hijackBackgroundDrawer() {
     }
 }
 
-function startDrawerObserver() {
-    if (state.observers.drawer) return;
-    state.observers.drawer = new MutationObserver(() => hijackBackgroundDrawer());
-    const targets = [
-        document.getElementById('top-settings-holder'),
-        document.getElementById('Backgrounds'),
-    ].filter((n) => n instanceof HTMLElement);
-    if (targets.length === 0) {
-        state.observers.drawer.observe(document.body, { childList: true, subtree: false });
-    } else {
-        targets.forEach((target) => state.observers.drawer.observe(target, { childList: true, subtree: true }));
+// Bind the drawer hijack once. The native top-bar button is present at load in
+// practice; if not yet, retry a few times with a short delay instead of running
+// a permanent MutationObserver (the old approach re-fired on every mutation
+// inside the native gallery, which made the manager janky to interact with).
+function startDrawerHijack(attempt = 0) {
+    const button = document.getElementById('backgrounds-drawer-toggle');
+    if (button) {
+        hijackBackgroundDrawer();
+        return;
     }
-    hijackBackgroundDrawer();
+    if (attempt >= 20) return; // ~5s of bounded retries, then give up
+    setTimeout(() => startDrawerHijack(attempt + 1), 250);
 }
 
 // ── Settings UI ───────────────────────────────────────────────────────────
@@ -1901,6 +2139,7 @@ function bindSettingsUI() {
     const hijack = $('bgm_hijack_drawer');
     const confirmApply = $('bgm_confirm_apply');
     const thumbSize = $('bgm_thumb_size');
+    const pageSize = $('bgm_page_size');
 
     if (openBtn) openBtn.addEventListener('click', openManager);
     if (hijack) {
@@ -1917,6 +2156,19 @@ function bindSettingsUI() {
             s.thumbSize = THUMB_SIZES.includes(thumbSize.value) ? thumbSize.value : 'medium';
             saveSettings();
             if (state.isOpen) renderGrid();
+        });
+    }
+    if (pageSize) {
+        pageSize.value = String(s.pageSize);
+        pageSize.addEventListener('change', () => {
+            const val = Number(pageSize.value);
+            s.pageSize = PAGE_SIZES.includes(val) ? val : DEFAULT_SETTINGS.pageSize;
+            saveSettings();
+            if (state.isOpen) {
+                state.pageSize = s.pageSize;
+                state.currentPage = 1;
+                renderGrid();
+            }
         });
     }
 }
@@ -1955,7 +2207,7 @@ jQuery(async () => {
 
     getSettings();
     bindSettingsUI();
-    startDrawerObserver();
+    startDrawerHijack();
     bindChatChange();
 
     // Warm the module, then enforce the saved scope mode on load.

@@ -9,6 +9,7 @@
     --bgm-border: color-mix(in srgb, var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.16)) 80%, rgba(255, 255, 255, 0.12) 20%);
     --bgm-accent: var(--SmartThemeQuoteColor, #6aa9ff);
     --bgm-accent-soft: color-mix(in srgb, var(--SmartThemeQuoteColor, #6aa9ff) 18%, var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.98)) 82%);
+    --bgm-accent-muted: color-mix(in srgb, var(--bgm-accent) 70%, var(--bgm-surface) 30%);
     --bgm-text: var(--SmartThemeBodyColor, #f2f0eb);
     --bgm-muted: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f0eb) 64%, var(--SmartThemeEmColor, #9b9b9b) 36%);
     --bgm-danger: #e06464;
@@ -39,8 +40,8 @@
 .bgm_backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.66);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
 }
 
 /* The panel chrome is gated on the build stamp (signature anti-tamper). */
@@ -173,8 +174,9 @@
 }
 
 .bgm_scope_btn.is-active {
-    background: var(--bgm-accent);
-    color: #fff;
+    background: var(--bgm-accent-soft);
+    color: var(--bgm-accent);
+    box-shadow: inset 0 0 0 1px var(--bgm-accent);
 }
 
 .bgm_scope_btn[disabled] {
@@ -300,6 +302,95 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* ── Global picker: folder sections + search ── */
+.bgm_pick_search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 0 10px;
+    border: 1px solid var(--bgm-border);
+    border-radius: 10px;
+    background: var(--bgm-surface-strong);
+}
+
+.bgm_pick_search i {
+    color: var(--bgm-muted);
+    flex: 0 0 auto;
+}
+
+.bgm_pick_search input {
+    flex: 1 1 auto;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.bgm_pick_sections {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bgm_pick_section {
+    border: 1px solid var(--bgm-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bgm-surface-soft);
+}
+
+.bgm_pick_section_header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--bgm-text);
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.92rem;
+}
+
+.bgm_pick_section_header:hover {
+    background: var(--bgm-accent-soft);
+}
+
+.bgm_pick_section_header .fa-folder {
+    color: var(--bgm-muted);
+}
+
+.bgm_pick_section_name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bgm_pick_section_count {
+    flex: 0 0 auto;
+    color: var(--bgm-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.bgm_pick_chevron {
+    flex: 0 0 auto;
+    transition: transform 0.18s ease;
+}
+
+.bgm_pick_section.is-collapsed .bgm_pick_chevron {
+    transform: rotate(-90deg);
+}
+
+.bgm_pick_section .bgm_pick_grid {
+    padding: 10px 12px 12px;
+}
+
+.bgm_pick_section.is-collapsed .bgm_pick_grid {
+    display: none;
 }
 
 /* ── Selection bar ── */
@@ -454,6 +545,11 @@
     background: var(--bgm-surface-soft);
 }
 
+.bgm_folder_button > i {
+    color: var(--bgm-muted);
+    flex: 0 0 auto;
+}
+
 .bgm_folder_name {
     flex: 1 1 auto;
     overflow: hidden;
@@ -553,6 +649,35 @@
     gap: 10px;
     --bgm-thumb-w: 150px;
     --bgm-thumb-h: 84px;
+}
+
+/* ── Pager ── */
+.bgm_pager {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 4px 2px;
+}
+
+.bgm_pager_label {
+    min-width: 56px;
+    text-align: center;
+    color: var(--bgm-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.bgm_pager_range {
+    color: var(--bgm-muted);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+}
+
+.bgm_pager .menu_button[disabled] {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 /* ── Row ── */
@@ -688,9 +813,23 @@
     white-space: nowrap;
 }
 
-.bgm_badge.is-global { background: color-mix(in srgb, #2f8f4e 82%, black); }
-.bgm_badge.is-linked { background: color-mix(in srgb, var(--bgm-accent) 86%, black); }
-.bgm_badge.is-animated { background: color-mix(in srgb, #8a5cd0 82%, black); }
+.bgm_badge.is-global { background: color-mix(in srgb, #2f8f4e 70%, black 30%); }
+.bgm_badge.is-animated { background: color-mix(in srgb, #8a5cd0 70%, black 30%); }
+.bgm_badge.is-folder {
+    background: color-mix(in srgb, #c8893a 70%, black 30%);
+    max-width: 160px;
+}
+/* Linked uses the soft-accent treatment so it never blasts a neon fill. */
+.bgm_badge.is-linked {
+    background: var(--bgm-accent-soft);
+    color: var(--bgm-accent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bgm-accent) 45%, transparent);
+}
+.bgm_badge.is-folder span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* Actions */
 .bgm_row_actions {
@@ -731,6 +870,12 @@
 
 .bgm_row_btn_danger:hover {
     color: var(--bgm-danger) !important;
+}
+
+/* Quick "remove from this folder" button — subtle warm hint on hover. */
+.bgm_row_btn[data-bgm-card-action="remove-from-folder"]:hover {
+    color: color-mix(in srgb, #c8893a 80%, var(--bgm-text) 20%) !important;
+    border-color: color-mix(in srgb, #c8893a 45%, var(--bgm-border) 55%);
 }
 
 /* ── Mobile sidebar toggle ── */
@@ -975,6 +1120,14 @@
     }
     .bgm_row_meta .bgm_badge {
         padding: 2px 4px;
+    }
+    /* Up to 5 action buttons can appear inside a folder view — let them wrap
+       to a second line instead of squeezing the name column off-screen. */
+    .bgm_row_actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: 50%;
+        row-gap: 4px;
     }
 }
 
