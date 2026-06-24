@@ -4,7 +4,7 @@
 > Browse and organize your backgrounds in a clean modal, drop them into folders, and **link a background to a specific chat** so switching chats switches the scene.
 
 ![SillyTavern](https://img.shields.io/badge/SillyTavern-Extension-9333ea)
-![Version](https://img.shields.io/badge/version-1.0.0-3b82f6)
+![Version](https://img.shields.io/badge/version-1.1.0-3b82f6)
 ![Author](https://img.shields.io/badge/author-aceenvw-1f2937)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-10b981)
 
@@ -53,13 +53,21 @@ go through the same server endpoints.
   toggle and a `Linked here` badge make the current state obvious at a glance.
 - **Folders** — create, rename and delete folders; drag-and-drop backgrounds
   into them (mouse drag on desktop, long-press drag on touch); filter the grid by
-  folder, by *Unfiled*, or by *This Chat*.
+  folder, by *Unfiled*, or by *This Chat*. Cards show an **in-folder badge** so you
+  can see at a glance which folder(s) a background belongs to, and a quick
+  **remove-from-folder** button appears while you are inside a folder view.
+- **Pagination** — the grid is paged (10 / 30 / 60 / 100 per page, configurable)
+  to keep large libraries fast and the modal snappy to open and close. A pager
+  shows the current page and an item-range counter (e.g. `1–60 of 142`).
 - **Apply globally** — set any background as the shared global one in one click.
+  The global picker groups backgrounds into **collapsible folder sections** with
+  a search box for fast navigation.
 - **Rename / delete** — with safe filename handling and reference repair (if you
   rename or delete the background a chat is linked to, the link is fixed up).
 - **Bulk actions** — multi-select, then move-to-folder or delete in one go.
-- **Upload** — drop in new backgrounds (static images, animated `webp` / `gif` /
-  `apng`, and `mp4` / `webm` videos via the Video Background Loader extension).
+- **Upload** — add **multiple** backgrounds at once (static images, animated
+  `webp` / `gif` / `apng`, and `mp4` / `webm` videos via the Video Background
+  Loader extension), auto-filed into the open folder.
 - **Bilingual** — English and Russian, auto-detected from your SillyTavern locale.
 - **Drawer hijack (optional)** — open the manager instead of the default
   Backgrounds drawer; toggle it off any time in settings.
@@ -103,10 +111,14 @@ Or clone into `SillyTavern/data/<user>/extensions/third-party/background-manager
 - Click the **Backgrounds** drawer icon (with hijack on) **or** open the manager
   from its settings block via **Open Background Manager**.
 - Search, sort, and pick a folder in the left sidebar.
-- On a card: **Apply globally**, **Link to this chat**, rename, move to folder,
-  delete, or set as the active folder's cover.
+- On a card: **Link to this chat**, rename, move to folder, delete, and — while
+  inside a folder view — **remove from this folder** in one click.
 - Drag a card onto a folder (or onto *Unfiled*) to file it.
-- Use **Upload** to add new backgrounds.
+- Set the shared **global background** from the Global card's **Change** button;
+  the picker is grouped by folder with a search box.
+- Use **Upload** to add new backgrounds; select **multiple** files at once and
+  they are all imported (and filed into the open folder).
+- Page through large libraries with the pager beneath the grid.
 
 ---
 
@@ -117,6 +129,7 @@ Or clone into `SillyTavern/data/<user>/extensions/third-party/background-manager
 | **Open manager instead of the default Backgrounds drawer** | Hijack the native drawer button. On by default. |
 | **Confirm before applying a background** | Ask for confirmation before applying/linking. Off by default. |
 | **Thumbnail size** | Small / Medium / Large grid density. |
+| **Backgrounds per page** | How many backgrounds each page shows: 10 / 30 / 60 / 100. Defaults to 60. |
 
 ---
 
@@ -174,7 +187,7 @@ DevTools console while the manager modal exists in the DOM:
 
 ```js
 atob(document.getElementById('bgm_modal').dataset.build)
-// → {"a":"aceenvw","v":"1.0.0","h":"..."}
+// → {"a":"aceenvw","v":"1.1.0","h":"..."}
 ```
 
 The same author-seeded hash drives the stable per-background element IDs and the
