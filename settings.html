@@ -6,44 +6,62 @@
         </div>
         <div class="inline-drawer-content" style="display: none;">
 
-            <div class="flex-container">
-                <button id="bgm_open_button" type="button" class="menu_button menu_button_icon interactable">
+            <div class="bgm_settings_card">
+                <p class="bgm_settings_intro" data-i18n="settings.intro">Browse, organize and link backgrounds to chats — all from one clean panel.</p>
+
+                <button id="bgm_open_button" type="button" class="bgm_settings_primary interactable">
                     <i class="fa-solid fa-images"></i>
                     <span data-i18n="settings.open">Open Background Manager</span>
                 </button>
-            </div>
 
-            <hr />
+                <div class="bgm_settings_section">
+                    <h4 class="bgm_settings_heading" data-i18n="settings.behaviorHeading">Behavior</h4>
 
-            <div class="flex-container">
-                <input id="bgm_hijack_drawer" type="checkbox" />
-                <label for="bgm_hijack_drawer" data-i18n="settings.hijack">Open manager instead of the default Backgrounds drawer</label>
-            </div>
+                    <label class="bgm_set_row bgm_set_toggle" for="bgm_hijack_drawer">
+                        <span class="bgm_set_text">
+                            <span class="bgm_set_label" data-i18n="settings.hijack">Open manager instead of the default Backgrounds drawer</span>
+                            <span class="bgm_set_desc" data-i18n="settings.hijackDesc">Clicking the Backgrounds drawer button opens this manager.</span>
+                        </span>
+                        <input id="bgm_hijack_drawer" type="checkbox" />
+                    </label>
 
-            <div class="flex-container">
-                <input id="bgm_confirm_apply" type="checkbox" />
-                <label for="bgm_confirm_apply" data-i18n="settings.confirmApply">Confirm before applying a background</label>
-            </div>
+                    <label class="bgm_set_row bgm_set_toggle" for="bgm_confirm_apply">
+                        <span class="bgm_set_text">
+                            <span class="bgm_set_label" data-i18n="settings.confirmApply">Confirm before applying a background</span>
+                            <span class="bgm_set_desc" data-i18n="settings.confirmApplyDesc">Ask before applying or linking a background.</span>
+                        </span>
+                        <input id="bgm_confirm_apply" type="checkbox" />
+                    </label>
+                </div>
 
-            <hr />
+                <div class="bgm_settings_section">
+                    <h4 class="bgm_settings_heading" data-i18n="settings.displayHeading">Display</h4>
 
-            <div>
-                <label for="bgm_thumb_size" data-i18n="settings.thumbSize">Thumbnail size</label>
-                <select id="bgm_thumb_size" class="text_pole textarea_compact">
-                    <option value="small" data-i18n="settings.thumb.small">Small</option>
-                    <option value="medium" data-i18n="settings.thumb.medium">Medium</option>
-                    <option value="large" data-i18n="settings.thumb.large">Large</option>
-                </select>
-            </div>
+                    <div class="bgm_set_row">
+                        <span class="bgm_set_text">
+                            <span class="bgm_set_label" data-i18n="settings.thumbSize">Thumbnail size</span>
+                            <span class="bgm_set_desc" data-i18n="settings.thumbSizeDesc">Grid density inside the manager.</span>
+                        </span>
+                        <select id="bgm_thumb_size" class="text_pole textarea_compact bgm_set_control">
+                            <option value="small" data-i18n="settings.thumb.small">Small</option>
+                            <option value="medium" data-i18n="settings.thumb.medium">Medium</option>
+                            <option value="large" data-i18n="settings.thumb.large">Large</option>
+                        </select>
+                    </div>
 
-            <div>
-                <label for="bgm_page_size" data-i18n="settings.pageSize">Backgrounds per page</label>
-                <select id="bgm_page_size" class="text_pole textarea_compact">
-                    <option value="10">10</option>
-                    <option value="30">30</option>
-                    <option value="60">60</option>
-                    <option value="100">100</option>
-                </select>
+                    <div class="bgm_set_row">
+                        <span class="bgm_set_text">
+                            <span class="bgm_set_label" data-i18n="settings.pageSize">Backgrounds per page</span>
+                            <span class="bgm_set_desc" data-i18n="settings.pageSizeDesc">Fewer per page keeps large libraries fast.</span>
+                        </span>
+                        <select id="bgm_page_size" class="text_pole textarea_compact bgm_set_control">
+                            <option value="10">10</option>
+                            <option value="30">30</option>
+                            <option value="60">60</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
         </div>

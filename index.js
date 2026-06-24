@@ -31,7 +31,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     confirmApply: false,
     thumbSize: 'medium',
     sort: 'az',
-    pageSize: 60,
+    pageSize: 30,
     activeFolderId: null,
     // Scope mode: 'global' (all chats share global) | 'per-chat' (lock, else global).
     bgScope: 'global',
@@ -64,7 +64,7 @@ function buildStamp(version) {
         return '';
     }
 }
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 // ── Module state ──────────────────────────────────────────────────────────
 const state = {
@@ -108,7 +108,7 @@ const I18N = {
         'folder.heading': 'Folders',
         'folder.hint': 'Drag backgrounds here to organize them.',
         'folder.allBackgrounds': 'All Backgrounds',
-        'folder.unfiled': 'Unfiled',
+        'folder.unfiled': 'Unsorted',
         'folder.chat': 'This Chat',
         'status.loading': 'Loading backgrounds...',
         'status.empty': 'No backgrounds match this view yet.',
@@ -124,11 +124,18 @@ const I18N = {
         'global.none': 'No global background set',
         'global.change': 'Change',
         'prompt.pickGlobalTitle': 'Choose global background',
+        'settings.intro': 'Browse, organize and link backgrounds to chats — all from one clean panel.',
         'settings.open': 'Open Background Manager',
+        'settings.behaviorHeading': 'Behavior',
+        'settings.displayHeading': 'Display',
         'settings.hijack': 'Open manager instead of the default Backgrounds drawer',
+        'settings.hijackDesc': 'Clicking the Backgrounds drawer button opens this manager.',
         'settings.confirmApply': 'Confirm before applying a background',
+        'settings.confirmApplyDesc': 'Ask before applying or linking a background.',
         'settings.thumbSize': 'Thumbnail size',
+        'settings.thumbSizeDesc': 'Grid density inside the manager.',
         'settings.pageSize': 'Backgrounds per page',
+        'settings.pageSizeDesc': 'Fewer per page keeps large libraries fast.',
         'settings.thumb.small': 'Small',
         'settings.thumb.medium': 'Medium',
         'settings.thumb.large': 'Large',
@@ -161,6 +168,7 @@ const I18N = {
         'toast.error': 'Something went wrong.',
         'prompt.renameTitle': 'Rename background',
         'prompt.renameText': 'Enter a new name (without extension):',
+        'prompt.pickFolderText': 'Please choose a folder to move to:',
         'prompt.newFolderTitle': 'New folder',
         'prompt.newFolderText': 'Enter a folder name:',
         'prompt.renameFolderTitle': 'Rename folder',
@@ -191,7 +199,7 @@ const I18N = {
         'folder.heading': 'Папки',
         'folder.hint': 'Перетащите фоны сюда для сортировки.',
         'folder.allBackgrounds': 'Все фоны',
-        'folder.unfiled': 'Без папки',
+        'folder.unfiled': 'Несортированное',
         'folder.chat': 'Этот чат',
         'status.loading': 'Загрузка фонов...',
         'status.empty': 'Нет фонов для этого вида.',
@@ -207,11 +215,18 @@ const I18N = {
         'global.none': 'Глобальный фон не задан',
         'global.change': 'Изменить',
         'prompt.pickGlobalTitle': 'Выберите глобальный фон',
+        'settings.intro': 'Просматривайте, сортируйте и привязывайте фоны к чатам — всё в одной аккуратной панели.',
         'settings.open': 'Открыть менеджер фонов',
+        'settings.behaviorHeading': 'Поведение',
+        'settings.displayHeading': 'Отображение',
         'settings.hijack': 'Открывать менеджер вместо стандартной панели фонов',
+        'settings.hijackDesc': 'Нажатие на кнопку панели фонов открывает этот менеджер.',
         'settings.confirmApply': 'Подтверждать применение фона',
+        'settings.confirmApplyDesc': 'Спрашивать перед применением или привязкой фона.',
         'settings.thumbSize': 'Размер миниатюр',
+        'settings.thumbSizeDesc': 'Плотность сетки внутри менеджера.',
         'settings.pageSize': 'Фонов на странице',
+        'settings.pageSizeDesc': 'Меньше на странице — быстрее работает большая библиотека.',
         'settings.thumb.small': 'Маленький',
         'settings.thumb.medium': 'Средний',
         'settings.thumb.large': 'Большой',
@@ -244,6 +259,7 @@ const I18N = {
         'toast.error': 'Что-то пошло не так.',
         'prompt.renameTitle': 'Переименовать фон',
         'prompt.renameText': 'Введите новое имя (без расширения):',
+        'prompt.pickFolderText': 'Выберите папку для перемещения:',
         'prompt.newFolderTitle': 'Новая папка',
         'prompt.newFolderText': 'Введите имя папки:',
         'prompt.renameFolderTitle': 'Переименовать папку',
@@ -1366,7 +1382,7 @@ async function pickFolder() {
     const label = document.createElement('label');
     label.style.display = 'block';
     label.style.marginBottom = '6px';
-    label.textContent = t('card.move');
+    label.textContent = t('prompt.pickFolderText');
     const select = document.createElement('select');
     select.className = 'text_pole';
     select.style.width = '100%';
