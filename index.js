@@ -2146,6 +2146,23 @@ function startDrawerHijack(attempt = 0) {
     setTimeout(() => startDrawerHijack(attempt + 1), 250);
 }
 
+// When the manager is open and the user clicks a different top-bar drawer
+// icon, close the manager so it doesn't float over the newly opened panel.
+function bindTopBarCloseHandlers() {
+    const topBar = document.getElementById('top-settings-holder');
+    if (!topBar || topBar.dataset.bgmTopBarBound) return;
+    topBar.dataset.bgmTopBarBound = 'true';
+
+    topBar.addEventListener('click', (e) => {
+        if (!state.isOpen) return;
+        // Our own button is handled by the drawer hijack (toggles the manager).
+        if (e.target.closest('#backgrounds-drawer-toggle')) return;
+        // Only react to actual top-bar drawer/menu buttons.
+        if (!e.target.closest('.drawer-icon, .drawer-toggle')) return;
+        closeManager();
+    }, true); // capture phase, before ST opens the other drawer
+}
+
 // ── Settings UI ───────────────────────────────────────────────────────────
 function bindSettingsUI() {
     const s = getSettings();
@@ -2224,6 +2241,7 @@ jQuery(async () => {
     getSettings();
     bindSettingsUI();
     startDrawerHijack();
+    bindTopBarCloseHandlers();
     bindChatChange();
 
     // Warm the module, then enforce the saved scope mode on load.
