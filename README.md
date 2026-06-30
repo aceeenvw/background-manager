@@ -180,22 +180,6 @@ Built and maintained by **aceenvw**.
 
 ---
 
-## Provenance
-
-This build is signed by its author. To verify authorship in your browser's
-DevTools console while the manager modal exists in the DOM:
-
-```js
-atob(document.getElementById('bgm_modal').dataset.build)
-// → {"a":"aceenvw","v":"1.2.0","h":"..."}
-```
-
-The same author-seeded hash drives the stable per-background element IDs and the
-panel's `[data-build]` styling gate, so the signature is woven into real,
-load-bearing code rather than bolted on.
-
----
-
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](./LICENSE).
