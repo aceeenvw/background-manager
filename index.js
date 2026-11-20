@@ -148,6 +148,7 @@ const I18N = {
         'action.delete': 'Delete',
         'toolbar.search': 'Search backgrounds',
         'toolbar.upload': 'Upload',
+        'toolbar.uploadVideo': 'Upload video',
         'toolbar.newFolder': 'New Folder',
         'sort.az': 'Name A-Z',
         'sort.za': 'Name Z-A',
@@ -260,6 +261,7 @@ const I18N = {
         'action.delete': 'Удалить',
         'toolbar.search': 'Поиск фонов',
         'toolbar.upload': 'Загрузить',
+        'toolbar.uploadVideo': 'Загрузить видео',
         'toolbar.newFolder': 'Новая папка',
         'sort.az': 'Имя А-Я',
         'sort.za': 'Имя Я-А',
@@ -1954,6 +1956,7 @@ async function createDom() {
         search: modal.querySelector('#bgm_search'),
         sort: modal.querySelector('#bgm_sort'),
         upload: modal.querySelector('#bgm_upload'),
+        uploadVideo: modal.querySelector('#bgm_upload_video'),
         uploadInput: modal.querySelector('#bgm_upload_input'),
         newFolder: modal.querySelector('#bgm_new_folder'),
         folderTree: modal.querySelector('#bgm_folder_tree'),
@@ -2046,7 +2049,15 @@ function bindEvents() {
         state.currentPage = 1;
         renderGrid();
     });
-    d.upload.addEventListener('click', () => d.uploadInput.click());
+    d.upload.addEventListener('click', () => {
+        d.uploadInput.accept = 'image/*';
+        d.uploadInput.click();
+    });
+    d.uploadVideo.addEventListener('click', () => {
+        closeMoreMenu(true);
+        d.uploadInput.accept = 'video/*';
+        d.uploadInput.click();
+    });
     d.uploadInput.addEventListener('change', (e) => runAction(() => onUploadInput(e)));
     d.newFolder.addEventListener('click', () => { closeMoreMenu(true); runAction(createFolder); });
 
@@ -2355,6 +2366,9 @@ function hijackBackgroundDrawer() {
             if (state.isOpen) {
                 closeManager();
             } else {
+                for (const drawer of document.querySelectorAll('#top-settings-holder .drawer-content.openDrawer:not(.pinnedOpen):not(#Backgrounds)')) {
+                    drawer.parentElement.querySelector(':scope > .drawer-toggle')?.click();
+                }
                 runAction(openManager);
             }
         }, { capture: true, signal: lifetime.signal });

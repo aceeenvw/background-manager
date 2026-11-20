@@ -7,7 +7,7 @@ Browse your SillyTavern backgrounds and choose which image to use for a chat, ch
 - **Background library:** Search by filename, switch between rows and thumbnails, and sort by name or date added.
 - **Assignments:** Choose **Assign to**, then tap a thumbnail. A chat assignment takes priority over a character or group assignment, followed by the theme and global background.
 - **Folders:** Move backgrounds into a folder or add them to several. Use selection mode to organize or delete multiple images together.
-- **Library tools:** Upload images, rename files, or open SillyTavern’s native background controls from the menu.
+- **Library tools:** Use **Upload** for photos or **More → Upload video** for videos. You can also rename files or open SillyTavern’s native background controls.
 
 ## Quick Start
 
