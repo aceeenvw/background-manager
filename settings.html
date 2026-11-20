@@ -10,7 +10,7 @@
                 <p class="bgm_settings_intro" data-i18n="settings.intro">Browse, organize and link backgrounds to chats — all from one clean panel.</p>
 
                 <button id="bgm_open_button" type="button" class="bgm_settings_primary interactable">
-                    <i class="fa-solid fa-images"></i>
+                    <i class="fa-solid fa-images" aria-hidden="true"></i>
                     <span data-i18n="settings.open">Open Background Manager</span>
                 </button>
 
@@ -37,12 +37,33 @@
                 <div class="bgm_settings_section">
                     <h4 class="bgm_settings_heading" data-i18n="settings.displayHeading">Display</h4>
 
+                    <label class="bgm_set_row" for="bgm_view_setting">
+                        <span class="bgm_set_text"><span class="bgm_set_label" data-i18n="settings.view">Library view</span></span>
+                        <select id="bgm_view_setting" class="text_pole bgm_set_control">
+                            <option value="rows" data-i18n="settings.rows">Rows</option>
+                            <option value="grid" data-i18n="settings.grid">Grid</option>
+                        </select>
+                    </label>
+                    <label class="bgm_set_row" for="bgm_grid_columns">
+                        <span class="bgm_set_text"><span class="bgm_set_label" data-i18n="settings.columns">Cards per row</span><span class="bgm_set_desc" data-i18n="settings.columnsDesc">Maximum desktop columns; two on phones.</span></span>
+                        <select id="bgm_grid_columns" class="text_pole bgm_set_control">
+                            <option value="auto" data-i18n="settings.auto">Auto</option>
+                            <option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+                        </select>
+                    </label>
+                    <label class="bgm_set_row" for="bgm_aspect_ratio">
+                        <span class="bgm_set_text"><span class="bgm_set_label" data-i18n="settings.ratio">Image ratio</span><span class="bgm_set_desc" data-i18n="settings.ratioDesc">Thumbnail proportions in grid view.</span></span>
+                        <select id="bgm_aspect_ratio" class="text_pole bgm_set_control">
+                            <option value="16 / 9">16:9</option><option value="4 / 3">4:3</option><option value="3 / 2">3:2</option><option value="1 / 1">1:1</option>
+                        </select>
+                    </label>
+
                     <div class="bgm_set_row">
                         <span class="bgm_set_text">
                             <span class="bgm_set_label" data-i18n="settings.thumbSize">Thumbnail size</span>
-                            <span class="bgm_set_desc" data-i18n="settings.thumbSizeDesc">Grid density inside the manager.</span>
+                            <span class="bgm_set_desc" data-i18n="settings.thumbSizeDesc">Preview size in row view.</span>
                         </span>
-                        <select id="bgm_thumb_size" class="text_pole textarea_compact bgm_set_control">
+                        <select id="bgm_thumb_size" class="text_pole textarea_compact bgm_set_control" data-i18n-aria-label="settings.thumbSize">
                             <option value="small" data-i18n="settings.thumb.small">Small</option>
                             <option value="medium" data-i18n="settings.thumb.medium">Medium</option>
                             <option value="large" data-i18n="settings.thumb.large">Large</option>
@@ -54,7 +75,7 @@
                             <span class="bgm_set_label" data-i18n="settings.pageSize">Backgrounds per page</span>
                             <span class="bgm_set_desc" data-i18n="settings.pageSizeDesc">Fewer per page keeps large libraries fast.</span>
                         </span>
-                        <select id="bgm_page_size" class="text_pole textarea_compact bgm_set_control">
+                        <select id="bgm_page_size" class="text_pole textarea_compact bgm_set_control" data-i18n-aria-label="settings.pageSize">
                             <option value="10">10</option>
                             <option value="30">30</option>
                             <option value="60">60</option>

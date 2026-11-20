@@ -21,27 +21,30 @@ const MODULE_SETTINGS_KEY = 'aevBackgroundManager';
 
 // Native chat-metadata keys (public/scripts/backgrounds.js).
 const BG_METADATA_KEY = 'custom_background';   // per-chat lock (CSS url string)
-const LIST_METADATA_KEY = 'chat_backgrounds';  // per-chat uploads (relative paths)
 
 const THUMB_SIZES = Object.freeze(['small', 'medium', 'large']);
 const PAGE_SIZES = Object.freeze([10, 30, 60, 100]);
+const GRID_COLUMNS = ['auto', '3', '4', '5', '6', '7', '8', '9', '10'];
+const ASPECT_RATIOS = ['16 / 9', '4 / 3', '3 / 2', '1 / 1'];
+const ASSIGNMENT_SCOPES = ['global', 'chat', 'character', 'theme'];
+const warn = (step, err) => console.warn(`[BGM] ${step}`, err);
 
 const DEFAULT_SETTINGS = Object.freeze({
     hijackDrawer: true,
     confirmApply: false,
     thumbSize: 'medium',
+    view: 'rows',
+    gridColumns: '4',
+    aspectRatio: '16 / 9',
+    assignmentScope: 'global',
+    characterBackgrounds: {},
+    themeBackgrounds: {},
     sort: 'az',
     pageSize: 30,
     activeFolderId: null,
-    // Scope mode: 'global' (all chats share global) | 'per-chat' (lock, else global).
-    bgScope: 'global',
 });
 
-// ── aceenvw signature: delta-encoded FNV-1a seed ──────────────────────────
-// Author string stored as code-point deltas (not plaintext). Seeds the hash
-// behind stable DOM ids and the data-build stamp that CSS [data-build] needs.
-// Verify: atob(document.getElementById('bgm_modal').dataset.build)
-const _SIG_DELTAS = [97, 2, 2, 0, 9, 8, 1]; // a, +c, +e, +e, +n, +v, +w
+const _SIG_DELTAS = [97, 2, 2, 0, 9, 8, 1];
 function _sigString() {
     let acc = 0;
     const codes = _SIG_DELTAS.map((d) => (acc += d));
@@ -64,7 +67,7 @@ function buildStamp(version) {
         return '';
     }
 }
-const VERSION = '1.2.0';
+const VERSION = '1.1.0';
 
 // ── Module state ──────────────────────────────────────────────────────────
 const state = {
@@ -80,22 +83,68 @@ const state = {
     pageSize: DEFAULT_SETTINGS.pageSize,
     currentPage: 1,
     selected: new Set(),
+    selectionMode: false,
     refreshToken: 0,
     dom: {},
     boundChatHandler: false,
     suppressDrawerHijack: false,
+    lastFocusedElement: null,
+    refreshController: null,
+    contextTimer: null,
+    actionBusy: false,
+    folderCounts: new Map(),
+    drawerTimer: null,
+    eventSource: null,
+    contextEvents: [],
+    libraryLoaded: false,
+    foldersReady: false,
+    searchFrame: 0,
+    backgroundObserver: null,
+    lastVisibleBackground: '',
+    contextKey: '',
+    inlineEditor: null,
 };
+const lifetime = new AbortController();
 
 // ── i18n (EN / RU) ────────────────────────────────────────────────────────
 const I18N = {
     en: {
-        'app.title': '⊹ Background Manager ⊹',
-        'app.subtitle': 'Browse, organize and link backgrounds to chats.',
+        'toolbar.more': 'More',
+        'toolbar.sort': 'Sort backgrounds',
+        'toolbar.viewRows': 'Switch to rows',
+        'toolbar.viewGrid': 'Switch to grid',
+        'toolbar.select': 'Select backgrounds',
+        'toolbar.native': 'Native background controls',
+        'selection.empty': 'Select backgrounds for bulk actions',
+        'action.select': 'Select background',
+        'action.selected': '{n} selected',
+        'action.assign': 'Apply to selected scope',
+        'action.clearAssignment': 'Remove assignment (use fallback)',
+        'scope.label': 'Assign to',
+        'scope.global': 'Global',
+        'scope.chat': 'Chat',
+        'scope.character': 'Character / group',
+        'scope.theme': 'Theme',
+        'scope.none': 'No background',
+        'scope.custom': 'Custom background',
+        'scope.unavailable': 'Open a chat, select a character/group, or choose a theme first.',
+        'scope.active': 'Active · {scope}',
+        'status.noFolders': 'Folder information unavailable. Refresh to retry.',
+        'settings.view': 'Library view',
+        'settings.rows': 'Rows',
+        'settings.grid': 'Grid',
+        'settings.columns': 'Cards per row',
+        'settings.columnsDesc': 'Maximum desktop columns; two on phones.',
+        'settings.auto': 'Auto',
+        'settings.ratio': 'Image ratio',
+        'settings.ratioDesc': 'Thumbnail proportions in grid view.',
+        'toast.videoLoader': 'Install Video Background Loader to upload videos as backgrounds.',
         'action.refresh': 'Refresh',
         'action.close': 'Close',
-        'action.selectAll': 'Select All',
+        'action.selectAll': 'Select page',
         'action.cancel': 'Cancel',
         'action.move': 'Move',
+        'action.addToFolder': 'Add to folder',
         'action.delete': 'Delete',
         'toolbar.search': 'Search backgrounds',
         'toolbar.upload': 'Upload',
@@ -106,7 +155,6 @@ const I18N = {
         'sort.oldest': 'Oldest first',
         'folder.all': 'All',
         'folder.heading': 'Folders',
-        'folder.hint': 'Drag backgrounds here to organize them.',
         'folder.allBackgrounds': 'All Backgrounds',
         'folder.unfiled': 'Unsorted',
         'folder.chat': 'This Chat',
@@ -115,15 +163,6 @@ const I18N = {
         'pager.prev': 'Previous page',
         'pager.next': 'Next page',
         'pager.range': '{from}–{to} of {total}',
-        'chat.bar.modeGlobal': 'Global mode — every chat shows the global background.',
-        'chat.bar.modePerChat': 'Per-chat mode — each chat keeps its own background (global by default).',
-        'chat.scope.global': 'Global',
-        'chat.scope.perchat': 'Per-chat',
-        'global.heading': 'Global background',
-        'global.hint': 'Shown in every chat unless a chat has its own.',
-        'global.none': 'No global background set',
-        'global.change': 'Change',
-        'prompt.pickGlobalTitle': 'Choose global background',
         'settings.intro': 'Browse, organize and link backgrounds to chats — all from one clean panel.',
         'settings.open': 'Open Background Manager',
         'settings.behaviorHeading': 'Behavior',
@@ -133,34 +172,35 @@ const I18N = {
         'settings.confirmApply': 'Confirm before applying a background',
         'settings.confirmApplyDesc': 'Ask before applying or linking a background.',
         'settings.thumbSize': 'Thumbnail size',
-        'settings.thumbSizeDesc': 'Grid density inside the manager.',
+        'settings.thumbSizeDesc': 'Preview size in row view.',
         'settings.pageSize': 'Backgrounds per page',
         'settings.pageSizeDesc': 'Fewer per page keeps large libraries fast.',
         'settings.thumb.small': 'Small',
         'settings.thumb.medium': 'Medium',
         'settings.thumb.large': 'Large',
-        'card.linkChat': 'Link to this chat',
-        'card.unlinkChat': 'Unlink from chat',
-        'card.linkDisabledMode': 'Switch to Per-chat mode to link backgrounds.',
         'card.rename': 'Rename',
         'card.move': 'Move to folder',
+        'card.addToFolder': 'Add to folder',
         'card.removeFromFolder': 'Remove from this folder',
         'card.delete': 'Delete',
         'badge.linked': 'Linked here',
         'badge.animated': 'Animated',
         'badge.inFolders': '{n} folders',
-        'toast.noChat': 'Open a chat first to link a background.',
-        'toast.appliedGlobal': 'Set as global background.',
-        'toast.linked': 'Linked to this chat.',
-        'toast.modePerChatNoChat': 'Per-chat mode on. Open a chat to give it its own background.',
-        'toast.unlinked': 'Reverted to the global background.',
         'toast.renamed': 'Background renamed.',
         'toast.nameExists': 'A background with that name already exists.',
         'toast.deleted': 'Background deleted.',
+        'toast.deletedMany': '{n} backgrounds deleted.',
+        'toast.deletedPartial': 'Deleted {ok} of {total} backgrounds. Failed items remain selected.',
+        'toast.referenceUpdateFailed': 'The file operation finished, but some background references could not be saved.',
+        'toast.busy': 'Please wait for the current action to finish.',
         'toast.removedFromFolder': 'Removed from folder.',
         'toast.uploaded': 'Background uploaded.',
         'toast.uploadedMany': '{n} backgrounds uploaded.',
         'toast.uploadedPartial': '{ok} of {total} backgrounds uploaded.',
+        'toast.uploadFolderFailed': '{n} uploaded background(s) could not be added to the folder.',
+        'toast.folderPartial': 'Updated {ok} of {total} backgrounds. Unfinished items remain selected.',
+        'toast.addedToFolder': 'Added to folder.',
+        'toast.noFolders': 'Create a folder first.',
         'toast.folderCreated': 'Folder created.',
         'toast.folderRenamed': 'Folder renamed.',
         'toast.folderDeleted': 'Folder deleted.',
@@ -168,7 +208,8 @@ const I18N = {
         'toast.error': 'Something went wrong.',
         'prompt.renameTitle': 'Rename background',
         'prompt.renameText': 'Enter a new name (without extension):',
-        'prompt.pickFolderText': 'Please choose a folder to move to:',
+        'prompt.pickFolderText': 'Move to this folder, replacing existing folder memberships:',
+        'prompt.addFolderText': 'Add to this folder, keeping existing folder memberships:',
         'prompt.newFolderTitle': 'New folder',
         'prompt.newFolderText': 'Enter a folder name:',
         'prompt.renameFolderTitle': 'Rename folder',
@@ -176,17 +217,46 @@ const I18N = {
         'prompt.deleteText': 'This permanently removes the file from the server.',
         'prompt.bulkDeleteTitle': 'Delete {n} background(s)?',
         'prompt.deleteFolderTitle': 'Delete folder "{name}"?',
-        'prompt.deleteFolderText': 'Backgrounds are kept, only the grouping is removed.',
+        'prompt.deleteFolderText': 'Files are kept. This shared folder is removed from all SillyTavern images, including images outside the background library.',
         'prompt.applyTitle': 'Apply background?',
     },
     ru: {
-        'app.title': '⊹ Менеджер фонов ⊹',
-        'app.subtitle': 'Просмотр, сортировка и привязка фонов к чатам.',
+        'toolbar.more': 'Ещё',
+        'toolbar.sort': 'Сортировка фонов',
+        'toolbar.viewRows': 'Переключить на строки',
+        'toolbar.viewGrid': 'Переключить на сетку',
+        'toolbar.select': 'Выбрать фоны',
+        'toolbar.native': 'Стандартные настройки фона',
+        'selection.empty': 'Выберите фоны для групповых действий',
+        'action.select': 'Выбрать фон',
+        'action.selected': 'Выбрано: {n}',
+        'action.assign': 'Применить к выбранной области',
+        'action.clearAssignment': 'Удалить привязку (использовать резервный фон)',
+        'scope.label': 'Привязать к',
+        'scope.global': 'Глобально',
+        'scope.chat': 'Чат',
+        'scope.character': 'Персонаж / группа',
+        'scope.theme': 'Тема',
+        'scope.none': 'Фон не выбран',
+        'scope.custom': 'Пользовательский фон',
+        'scope.unavailable': 'Сначала откройте чат, выберите персонажа/группу или тему.',
+        'scope.active': 'Текущий · {scope}',
+        'status.noFolders': 'Данные папок недоступны. Обновите список.',
+        'settings.view': 'Вид библиотеки',
+        'settings.rows': 'Строки',
+        'settings.grid': 'Сетка',
+        'settings.columns': 'Карточек в ряду',
+        'settings.columnsDesc': 'Максимум столбцов на компьютере; два на телефоне.',
+        'settings.auto': 'Авто',
+        'settings.ratio': 'Пропорции изображения',
+        'settings.ratioDesc': 'Пропорции миниатюр в сетке.',
+        'toast.videoLoader': 'Для загрузки видео в качестве фонов установите Video Background Loader.',
         'action.refresh': 'Обновить',
         'action.close': 'Закрыть',
-        'action.selectAll': 'Выбрать все',
+        'action.selectAll': 'Выбрать страницу',
         'action.cancel': 'Отмена',
         'action.move': 'Переместить',
+        'action.addToFolder': 'Добавить в папку',
         'action.delete': 'Удалить',
         'toolbar.search': 'Поиск фонов',
         'toolbar.upload': 'Загрузить',
@@ -197,7 +267,6 @@ const I18N = {
         'sort.oldest': 'Сначала старые',
         'folder.all': 'Все',
         'folder.heading': 'Папки',
-        'folder.hint': 'Перетащите фоны сюда для сортировки.',
         'folder.allBackgrounds': 'Все фоны',
         'folder.unfiled': 'Несортированное',
         'folder.chat': 'Этот чат',
@@ -206,17 +275,8 @@ const I18N = {
         'pager.prev': 'Предыдущая страница',
         'pager.next': 'Следующая страница',
         'pager.range': '{from}–{to} из {total}',
-        'chat.bar.modeGlobal': 'Глобальный режим — во всех чатах общий фон.',
-        'chat.bar.modePerChat': 'Режим «для чата» — у каждого чата свой фон (по умолчанию глобальный).',
-        'chat.scope.global': 'Глобально',
-        'chat.scope.perchat': 'Для чата',
-        'global.heading': 'Глобальный фон',
-        'global.hint': 'Показывается во всех чатах, если у чата нет своего.',
-        'global.none': 'Глобальный фон не задан',
-        'global.change': 'Изменить',
-        'prompt.pickGlobalTitle': 'Выберите глобальный фон',
         'settings.intro': 'Просматривайте, сортируйте и привязывайте фоны к чатам — всё в одной аккуратной панели.',
-        'settings.open': 'Открыть менеджер фонов',
+        'settings.open': 'Открыть Background Manager',
         'settings.behaviorHeading': 'Поведение',
         'settings.displayHeading': 'Отображение',
         'settings.hijack': 'Открывать менеджер вместо стандартной панели фонов',
@@ -224,34 +284,35 @@ const I18N = {
         'settings.confirmApply': 'Подтверждать применение фона',
         'settings.confirmApplyDesc': 'Спрашивать перед применением или привязкой фона.',
         'settings.thumbSize': 'Размер миниатюр',
-        'settings.thumbSizeDesc': 'Плотность сетки внутри менеджера.',
+        'settings.thumbSizeDesc': 'Размер миниатюр в строках.',
         'settings.pageSize': 'Фонов на странице',
         'settings.pageSizeDesc': 'Меньше на странице — быстрее работает большая библиотека.',
         'settings.thumb.small': 'Маленький',
         'settings.thumb.medium': 'Средний',
         'settings.thumb.large': 'Большой',
-        'card.linkChat': 'Привязать к чату',
-        'card.unlinkChat': 'Отвязать от чата',
-        'card.linkDisabledMode': 'Включите режим «для чата», чтобы привязывать фоны.',
         'card.rename': 'Переименовать',
         'card.move': 'В папку',
+        'card.addToFolder': 'Добавить в папку',
         'card.removeFromFolder': 'Убрать из этой папки',
         'card.delete': 'Удалить',
         'badge.linked': 'Привязан',
         'badge.animated': 'Анимация',
         'badge.inFolders': 'Папок: {n}',
-        'toast.noChat': 'Сначала откройте чат для привязки фона.',
-        'toast.appliedGlobal': 'Установлен как глобальный фон.',
-        'toast.linked': 'Привязан к этому чату.',
-        'toast.modePerChatNoChat': 'Режим «для чата» включён. Откройте чат, чтобы задать ему свой фон.',
-        'toast.unlinked': 'Возврат к глобальному фону.',
         'toast.renamed': 'Фон переименован.',
         'toast.nameExists': 'Фон с таким именем уже существует.',
         'toast.deleted': 'Фон удалён.',
+        'toast.deletedMany': 'Удалено фонов: {n}.',
+        'toast.deletedPartial': 'Удалено {ok} из {total} фонов. Неудалённые остаются выбранными.',
+        'toast.referenceUpdateFailed': 'Операция с файлом завершена, но часть привязок фона не удалось сохранить.',
+        'toast.busy': 'Дождитесь завершения текущего действия.',
         'toast.removedFromFolder': 'Убрано из папки.',
         'toast.uploaded': 'Фон загружен.',
         'toast.uploadedMany': 'Загружено фонов: {n}.',
         'toast.uploadedPartial': 'Загружено {ok} из {total} фонов.',
+        'toast.uploadFolderFailed': 'Не удалось добавить в папку загруженные фоны: {n}.',
+        'toast.folderPartial': 'Обновлено {ok} из {total} фонов. Незавершённые остаются выбранными.',
+        'toast.addedToFolder': 'Добавлено в папку.',
+        'toast.noFolders': 'Сначала создайте папку.',
         'toast.folderCreated': 'Папка создана.',
         'toast.folderRenamed': 'Папка переименована.',
         'toast.folderDeleted': 'Папка удалена.',
@@ -259,7 +320,8 @@ const I18N = {
         'toast.error': 'Что-то пошло не так.',
         'prompt.renameTitle': 'Переименовать фон',
         'prompt.renameText': 'Введите новое имя (без расширения):',
-        'prompt.pickFolderText': 'Выберите папку для перемещения:',
+        'prompt.pickFolderText': 'Переместить в эту папку, заменив прежние привязки к папкам:',
+        'prompt.addFolderText': 'Добавить в эту папку, сохранив прежние привязки к папкам:',
         'prompt.newFolderTitle': 'Новая папка',
         'prompt.newFolderText': 'Введите имя папки:',
         'prompt.renameFolderTitle': 'Переименовать папку',
@@ -267,7 +329,7 @@ const I18N = {
         'prompt.deleteText': 'Файл будет навсегда удалён с сервера.',
         'prompt.bulkDeleteTitle': 'Удалить фоны ({n} шт.)?',
         'prompt.deleteFolderTitle': 'Удалить папку «{name}»?',
-        'prompt.deleteFolderText': 'Фоны останутся, удаляется только группировка.',
+        'prompt.deleteFolderText': 'Файлы останутся. Общая папка удалится у всех изображений SillyTavern, включая изображения вне библиотеки фонов.',
         'prompt.applyTitle': 'Применить фон?',
     },
 };
@@ -286,7 +348,7 @@ function detectLang() {
     for (const raw of candidates) {
         if (typeof raw !== 'string' || !raw) continue;
         const lang = raw.toLowerCase().split(/[-_]/)[0];
-        if (lang === 'ru') return 'ru';
+        return lang === 'ru' ? 'ru' : 'en';
     }
     return 'en';
 }
@@ -306,6 +368,7 @@ function i18nApplyDom(root) {
     });
     const attrs = [['data-i18n-title', 'title'], ['data-i18n-placeholder', 'placeholder'], ['data-i18n-aria-label', 'aria-label']];
     for (const [dataAttr, realAttr] of attrs) {
+        if (root.hasAttribute(dataAttr)) root.setAttribute(realAttr, t(root.getAttribute(dataAttr)));
         root.querySelectorAll(`[${dataAttr}]`).forEach((el) => {
             el.setAttribute(realAttr, t(el.getAttribute(dataAttr)));
         });
@@ -326,7 +389,7 @@ function loadBgModule() {
     if (!_bgModulePromise) {
         _bgModulePromise = import('/scripts/backgrounds.js')
             .then((mod) => { _bgModule = mod; return mod; })
-            .catch((err) => { console.error('[BGM] could not import native backgrounds module', err); return null; });
+            .catch((err) => { _bgModulePromise = null; warn('background module', err); return null; });
     }
     return _bgModulePromise;
 }
@@ -335,7 +398,7 @@ function loadBgModule() {
 function getGlobalBgUrl() {
     try {
         const url = _bgModule?.background_settings?.url;
-        if (typeof url === 'string' && url) return url;
+        if (typeof url === 'string') return url;
     } catch (_) { /* continue */ }
     const name = getGlobalBgName();
     return name ? getBackgroundCssUrl(name) : '';
@@ -368,10 +431,24 @@ function getSettings() {
     }
     const s = ctx.extensionSettings[MODULE_SETTINGS_KEY];
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
-        if (!Object.hasOwn(s, key)) s[key] = DEFAULT_SETTINGS[key];
+        if (!Object.hasOwn(s, key)) s[key] = structuredClone(DEFAULT_SETTINGS[key]);
     }
     if (!THUMB_SIZES.includes(s.thumbSize)) s.thumbSize = DEFAULT_SETTINGS.thumbSize;
     if (!PAGE_SIZES.includes(Number(s.pageSize))) s.pageSize = DEFAULT_SETTINGS.pageSize;
+    if (!['rows', 'grid'].includes(s.view)) s.view = 'rows';
+    if (!GRID_COLUMNS.includes(String(s.gridColumns))) s.gridColumns = '4';
+    if (!ASPECT_RATIOS.includes(s.aspectRatio)) s.aspectRatio = '16 / 9';
+    if (!ASSIGNMENT_SCOPES.includes(s.assignmentScope)) s.assignmentScope = 'global';
+    for (const key of ['characterBackgrounds', 'themeBackgrounds']) {
+        if (!isObject(s[key])) s[key] = {};
+    }
+    for (const key of ['hijackDrawer', 'confirmApply']) {
+        if (typeof s[key] !== 'boolean') s[key] = DEFAULT_SETTINGS[key];
+    }
+    if (!['az', 'za', 'newest', 'oldest'].includes(s.sort)) s.sort = DEFAULT_SETTINGS.sort;
+    s.pageSize = Number(s.pageSize);
+    s.gridColumns = String(s.gridColumns);
+    if (s.activeFolderId !== null && typeof s.activeFolderId !== 'string') s.activeFolderId = null;
     return s;
 }
 
@@ -384,10 +461,14 @@ function saveSettings() {
 // delete/rename/folder call and on every filename ingested from the server.
 function isSafeBackgroundFile(name) {
     if (typeof name !== 'string' || !name) return false;
-    if (name.includes('..') || name.includes('/') || name.includes('\\') || name.includes('\0')) return false;
-    if (/[\u0000-\u001f]/.test(name)) return false;
+    if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) return false;
+    if (/[\u0000-\u001f\u0080-\u009f]/.test(name)) return false;
     if (/^[a-z][a-z0-9+.-]*:/i.test(name)) return false;
     return true;
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
 
 // Sanitize a user-typed name into a safe single filename component.
@@ -426,6 +507,24 @@ function getBackgroundCssUrl(file) {
     return `url("${getBackgroundPath(file)}")`;
 }
 
+function fileFromBackgroundUrl(cssUrl) {
+    const match = typeof cssUrl === 'string' && cssUrl.match(/^url\(\s*["']?(.*?)["']?\s*\)$/i);
+    if (!match) return '';
+    try {
+        const base = new URL(document.baseURI);
+        const url = new URL(match[1], base);
+        if (url.origin !== base.origin) return '';
+        const file = url.pathname === '/thumbnail' && url.searchParams.get('type') === 'bg'
+            ? url.searchParams.get('file')
+            : url.pathname.startsWith('/backgrounds/') ? decodeURIComponent(url.pathname.slice('/backgrounds/'.length)) : '';
+        return isSafeBackgroundFile(file) ? file : '';
+    } catch (_) { return ''; }
+}
+
+function matchesBackgroundUrl(cssUrl, file) {
+    return cssUrl === getBackgroundCssUrl(file) || fileFromBackgroundUrl(cssUrl) === file;
+}
+
 function stableId(file) {
     return `bgm-${fnv1a(file).toString(16)}`;
 }
@@ -457,20 +556,13 @@ function getLockedBgUrl() {
 function isLinkedToChat(file) {
     const locked = getLockedBgUrl();
     if (!locked) return false;
-    return locked === getBackgroundCssUrl(file);
+    return matchesBackgroundUrl(locked, file);
 }
 
-// Global background filename (never the per-chat lock), or ''.
-// Order: live module export → persisted power_user → native gallery highlight.
-// #bg1 is never read — it shows the linked bg while locked.
+// #bg1 may show a chat lock; read the native global setting instead.
 function getGlobalBgName() {
     try {
         const name = _bgModule?.background_settings?.name;
-        if (typeof name === 'string' && name && isSafeBackgroundFile(name)) return name;
-    } catch (_) { /* continue */ }
-
-    try {
-        const name = getContext().powerUserSettings?.background?.name;
         if (typeof name === 'string' && name && isSafeBackgroundFile(name)) return name;
     } catch (_) { /* continue */ }
 
@@ -488,67 +580,61 @@ function headers(extra) {
     return getContext().getRequestHeaders(extra);
 }
 
-async function apiFetchBackgrounds() {
+function requestSignal(timeout = 30000) {
+    return AbortSignal.any([lifetime.signal, AbortSignal.timeout(timeout)]);
+}
+
+async function apiFetchBackgrounds(signal) {
     const res = await fetch('/api/backgrounds/all', {
+        signal,
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({}),
     });
     if (!res.ok) throw new Error(`backgrounds/all ${res.status}`);
     const payload = await res.json();
-    const images = Array.isArray(payload?.images) ? payload.images : [];
+    if (!Array.isArray(payload?.images)) throw new Error('Invalid background library');
+    const images = payload.images;
     return images.map((img) => ({
         file: String(img.filename ?? img),
-        isAnimated: Boolean(img.isAnimated) || isAnimatedExtension(String(img.filename ?? img)),
+        isAnimated: typeof img.isAnimated === 'boolean' ? img.isAnimated : isAnimatedExtension(String(img.filename ?? img)),
     })).filter((b) => isSafeBackgroundFile(b.file));
 }
 
-async function apiLoadFolders() {
-    try {
-        const res = await fetch('/api/backgrounds/folders', {
-            method: 'POST',
-            headers: headers(),
-            body: JSON.stringify({}),
-        });
-        if (!res.ok) return { folders: [], imageFolderMap: {} };
-        const data = await res.json();
-        return {
-            folders: Array.isArray(data.folders) ? data.folders : [],
-            imageFolderMap: isObject(data.imageFolderMap) ? data.imageFolderMap : {},
-        };
-    } catch (_) {
-        return { folders: [], imageFolderMap: {} };
+async function apiLoadBackgroundMetadata(signal) {
+    const [folderResponse, metadataResponse] = await Promise.all([
+        fetch('/api/image-metadata/folders/get', {
+            signal, method: 'POST', headers: headers(), body: JSON.stringify({}),
+        }),
+        fetch('/api/image-metadata/all', {
+            signal, method: 'POST', headers: headers(), body: JSON.stringify({ prefix: 'backgrounds/' }),
+        }),
+    ]);
+    if (!folderResponse.ok) throw new Error(`folders/get ${folderResponse.status}`);
+    if (!metadataResponse.ok) throw new Error(`image-metadata/all ${metadataResponse.status}`);
+    const [folderData, metadata] = await Promise.all([folderResponse.json(), metadataResponse.json()]);
+    if (!Array.isArray(folderData) || !isObject(metadata?.images)) throw new Error('Invalid background metadata');
+    const folders = folderData.filter((folder) =>
+        isObject(folder) && typeof folder.id === 'string' && folder.id && typeof folder.name === 'string');
+    const folderIds = new Set(folders.map((folder) => folder.id));
+    const imageFolderMap = Object.create(null);
+    const timestamps = Object.create(null);
+    for (const [path, meta] of Object.entries(metadata.images)) {
+        if (!path.startsWith('backgrounds/')) continue;
+        const file = path.slice('backgrounds/'.length);
+        if (!isSafeBackgroundFile(file) || !isObject(meta)) continue;
+        imageFolderMap[file] = Array.isArray(meta.folderIds)
+            ? [...new Set(meta.folderIds.filter((id) => folderIds.has(id)))] : [];
+        const timestamp = Number(meta.addedTimestamp);
+        if (Number.isFinite(timestamp)) timestamps[file] = timestamp;
     }
-}
-
-// Upload timestamps for newest/oldest sort. Keys are raw `backgrounds/<file>`
-// (not URL-encoded). Returns { file: addedTimestamp }; {} on failure.
-async function apiLoadImageTimestamps() {
-    try {
-        const res = await fetch('/api/image-metadata/all', {
-            method: 'POST',
-            headers: headers(),
-            body: JSON.stringify({ prefix: 'backgrounds/' }),
-        });
-        if (!res.ok) return {};
-        const data = await res.json();
-        const images = isObject(data?.images) ? data.images : {};
-        const map = {};
-        for (const [path, meta] of Object.entries(images)) {
-            if (typeof path !== 'string' || !path.startsWith('backgrounds/')) continue;
-            const file = path.slice('backgrounds/'.length);
-            const ts = Number(meta?.addedTimestamp);
-            if (file && Number.isFinite(ts)) map[file] = ts;
-        }
-        return map;
-    } catch (_) {
-        return {};
-    }
+    return { folders, imageFolderMap, timestamps };
 }
 
 async function apiDeleteBackground(file) {
     if (!isSafeBackgroundFile(file)) throw new Error('unsafe filename');
     const res = await fetch('/api/backgrounds/delete', {
+        signal: requestSignal(),
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({ bg: file }),
@@ -560,6 +646,7 @@ async function apiDeleteBackground(file) {
 async function apiRenameBackground(oldFile, newFile) {
     if (!isSafeBackgroundFile(oldFile) || !isSafeBackgroundFile(newFile)) throw new Error('unsafe filename');
     const res = await fetch('/api/backgrounds/rename', {
+        signal: requestSignal(),
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({ old_bg: oldFile, new_bg: newFile }),
@@ -570,6 +657,7 @@ async function apiRenameBackground(oldFile, newFile) {
 
 async function apiUploadBackground(formData) {
     const res = await fetch('/api/backgrounds/upload', {
+        signal: requestSignal(120000),
         method: 'POST',
         headers: headers({ omitContentType: true }),
         body: formData,
@@ -581,6 +669,7 @@ async function apiUploadBackground(formData) {
 
 async function apiFolderCreate(name) {
     const res = await fetch('/api/image-metadata/folders/create', {
+        signal: requestSignal(),
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({ name }),
@@ -591,6 +680,7 @@ async function apiFolderCreate(name) {
 
 async function apiFolderUpdate(payload) {
     const res = await fetch('/api/image-metadata/folders/update', {
+        signal: requestSignal(),
         method: 'POST',
         headers: headers(),
         body: JSON.stringify(payload),
@@ -600,6 +690,7 @@ async function apiFolderUpdate(payload) {
 
 async function apiFolderDelete(id) {
     const res = await fetch('/api/image-metadata/folders/delete', {
+        signal: requestSignal(),
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({ id }),
@@ -612,6 +703,7 @@ async function apiFolderAssign(files, folderId, remove) {
     if (paths.length === 0) return;
     const endpoint = remove ? '/api/image-metadata/folders/unassign' : '/api/image-metadata/folders/assign';
     const res = await fetch(endpoint, {
+        signal: requestSignal(),
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({ id: folderId, paths }),
@@ -624,131 +716,238 @@ function popup() {
     return getContext().Popup;
 }
 
-// ── Scope mode (global vs per-chat) ─────────────────────────────────────────
-function getScopeMode() {
-    return getSettings().bgScope === 'per-chat' ? 'per-chat' : 'global';
+// ── Background assignments ────────────────────────────────────────────────
+function getCharacterTarget() {
+    const ctx = getContext();
+    if (ctx.groupId !== undefined && ctx.groupId !== null && ctx.groupId !== '') {
+        const group = ctx.groups?.find((g) => String(g.id) === String(ctx.groupId));
+        return { key: `group:${ctx.groupId}`, label: group?.name || String(ctx.groupId) };
+    }
+    const character = ctx.characters?.[ctx.characterId];
+    return character?.avatar ? { key: `character:${character.avatar}`, label: character.name || character.avatar } : null;
 }
 
-function isPerChatMode() {
-    return getScopeMode() === 'per-chat';
+function getAssignmentTarget(scope = getSettings().assignmentScope) {
+    if (scope === 'character') return getCharacterTarget();
+    if (scope === 'chat') return hasOpenChat() ? { key: JSON.stringify([getCharacterTarget()?.key, getChatId()]), label: String(getChatId()) } : null;
+    if (scope === 'theme') {
+        const name = document.getElementById('themes')?.value || getContext().powerUserSettings?.theme;
+        return typeof name === 'string' && name ? { key: `theme:${name}`, label: name } : null;
+    }
+    return { key: 'global', label: t('scope.global') };
 }
 
-// Set #bg1 for the current mode without mutating the stored lock (reversible):
-// global → always global; per-chat → lock if present, else global.
-function applyScopeMode() {
-    const globalUrl = getGlobalBgUrl();
-    if (isPerChatMode()) {
-        const locked = getLockedBgUrl();
-        if (locked) setVisibleBackground(locked);
-        else if (globalUrl) setVisibleBackground(globalUrl);
-    } else if (globalUrl) {
-        setVisibleBackground(globalUrl);
+function getAssignedUrl(scope, target = getAssignmentTarget(scope)) {
+    if (!target) return '';
+    if (scope === 'global') return getGlobalBgUrl();
+    if (scope === 'chat') return getLockedBgUrl();
+    const map = getSettings()[`${scope}Backgrounds`];
+    const file = Object.hasOwn(map, target.key) ? map[target.key] : '';
+    return isSafeBackgroundFile(file) && (!state.libraryLoaded || state.backgrounds.some((bg) => bg.file === file))
+        ? getBackgroundCssUrl(file) : '';
+}
+
+function resolveBackground() {
+    for (const scope of ['chat', 'character', 'theme', 'global']) {
+        const url = getAssignedUrl(scope);
+        if (scope === 'chat' && url && state.libraryLoaded) {
+            const file = fileFromBackgroundUrl(url);
+            if (file && !state.backgrounds.some(bg => bg.file === file)) continue;
+        }
+        if (url) return { scope, url };
+    }
+    return { scope: 'global', url: '' };
+}
+
+function applyResolvedBackground() {
+    setVisibleBackground(resolveBackground().url);
+}
+
+function nativeContextKey() {
+    return JSON.stringify([getAssignmentTarget('chat')?.key, getLockedBgUrl(), getAssignmentTarget('theme')?.key, getGlobalBgUrl()]);
+}
+
+function observeNativeBackground() {
+    const background = document.getElementById('bg1');
+    if (!background || state.backgroundObserver) return;
+    state.backgroundObserver = new MutationObserver(() => {
+        if (background.style.backgroundImage !== state.lastVisibleBackground || nativeContextKey() !== state.contextKey) scheduleContextUpdate();
+    });
+    state.backgroundObserver.observe(background, { attributes: true, attributeFilter: ['style'] });
+}
+
+function scheduleContextUpdate() {
+    if (lifetime.signal.aborted) return;
+    clearTimeout(state.contextTimer);
+    // Run after native CHAT_CHANGED listeners and ThemeAssist's theme change.
+    state.contextTimer = setTimeout(() => {
+        state.contextTimer = null;
+        state.contextKey = nativeContextKey();
+        applyResolvedBackground();
+        if (!state.inlineEditor) render();
+    }, 0);
+}
+
+function onNativeSettingsUpdate() {
+    if (nativeContextKey() !== state.contextKey) scheduleContextUpdate();
+}
+
+function sameTarget(scope, target) {
+    return target?.key === getAssignmentTarget(scope)?.key;
+}
+
+async function assignBackground(file, scope, target) {
+    if (!isSafeBackgroundFile(file) || !target || !sameTarget(scope, target)) return;
+    if (scope === 'global') return applyGlobal(file);
+    if (scope === 'chat') {
+        const ctx = getContext();
+        ctx.chatMetadata[BG_METADATA_KEY] = getBackgroundCssUrl(file);
+        await ctx.saveMetadata();
+    } else {
+        getSettings()[`${scope}Backgrounds`][target.key] = file;
+    }
+    saveSettings();
+    applyResolvedBackground();
+    render();
+}
+
+async function clearAssignment() {
+    const scope = getSettings().assignmentScope;
+    const target = getAssignmentTarget(scope);
+    if (!target || scope === 'global') return;
+    if (scope === 'chat') {
+        const ctx = getContext();
+        delete ctx.chatMetadata[BG_METADATA_KEY];
+        await ctx.saveMetadata();
+    } else {
+        delete getSettings()[`${scope}Backgrounds`][target.key];
+        saveSettings();
+    }
+    applyResolvedBackground();
+    render();
+}
+
+function repairAssignments(file, replacement = '') {
+    for (const scope of ['character', 'theme']) {
+        const map = getSettings()[`${scope}Backgrounds`];
+        for (const key of Object.keys(map)) {
+            if (map[key] !== file) continue;
+            if (replacement) map[key] = replacement;
+            else delete map[key];
+        }
+    }
+    saveSettings();
+}
+
+async function removeBackgroundReferences(file) {
+    repairAssignments(file);
+    if (getGlobalBgName() === file && _bgModule?.background_settings) {
+        const fallback = state.backgrounds.find((bg) => bg.file === '__transparent.png' && bg.file !== file)
+            || state.backgrounds.find((bg) => bg.file !== file);
+        const name = fallback?.file || '__transparent.png';
+        _bgModule.background_settings.name = name;
+        _bgModule.background_settings.url = getBackgroundCssUrl(name);
+        saveSettings();
+    }
+    try {
+        if (isLinkedToChat(file)) await unlinkFromChat();
+    } finally {
+        applyResolvedBackground();
     }
 }
 
 // ── Apply / link operations ─────────────────────────────────────────────────
 function setVisibleBackground(cssUrl) {
     const el = document.getElementById('bg1');
-    if (el) el.style.backgroundImage = cssUrl;
+    if (!el || lifetime.signal.aborted) return;
+    const normalized = document.createElement('div').style;
+    normalized.backgroundImage = cssUrl;
+    if (el.style.backgroundImage !== normalized.backgroundImage) el.style.backgroundImage = normalized.backgroundImage;
+    state.lastVisibleBackground = el.style.backgroundImage;
+    state.contextKey = nativeContextKey();
 }
 
 // Set the global background by mutating the native `background_settings` export
 // directly (script.js persists it by identity via saveSettingsDebounced).
 // Avoids `/bg` (needs the hijacked gallery rendered) and FORCE_SET_BACKGROUND
 // (locks to chat, not global).
-async function applyGlobal(file) {
-    let written = false;
-    try {
-        const mod = await loadBgModule();
-        if (mod?.background_settings) {
-            mod.background_settings.name = file;
-            mod.background_settings.url = getBackgroundCssUrl(file);
-            getContext().saveSettingsDebounced?.();
-            written = true;
-        }
-    } catch (err) {
-        console.error('[BGM] applyGlobal: module write failed', err);
-    }
-
-    // Fallback: persist via power_user if the module is unavailable.
-    if (!written) {
-        try {
-            const pu = getContext().powerUserSettings;
-            if (pu) {
-                pu.background = pu.background || {};
-                pu.background.name = file;
-                pu.background.url = getBackgroundCssUrl(file);
-                getContext().saveSettingsDebounced?.();
-            }
-        } catch (err) {
-            console.error('[BGM] applyGlobal fallback failed', err);
-        }
-    }
-
-    applyScopeMode();
-    toastr.success(t('toast.appliedGlobal'));
-    renderGrid();
+async function applyGlobal(file, expectedName = null) {
+    if (!isSafeBackgroundFile(file)) return;
+    const mod = await loadBgModule();
+    if (!mod?.background_settings) throw new Error('Native background settings unavailable');
+    if (expectedName !== null && mod.background_settings.name !== expectedName) return;
+    mod.background_settings.name = file;
+    mod.background_settings.url = getBackgroundCssUrl(file);
+    saveSettings();
+    applyResolvedBackground();
+    render();
 }
 
-// Link a background to the current chat via the native lock key.
-async function linkToChat(file) {
-    if (!hasOpenChat()) {
-        toastr.info(t('toast.noChat'));
-        return;
-    }
-    const ctx = getContext();
-    const cssUrl = getBackgroundCssUrl(file);
-    ctx.chatMetadata[BG_METADATA_KEY] = cssUrl;
-    await ctx.saveMetadata();
-    setVisibleBackground(cssUrl);
-    toastr.success(t('toast.linked'));
-    renderChatBar();
-    renderGrid();
-}
-
-// Remove the per-chat lock and revert to the global background.
+// Remove the native lock after its background file is deleted.
 async function unlinkFromChat() {
     const ctx = getContext();
     if (!ctx.chatMetadata || !ctx.chatMetadata[BG_METADATA_KEY]) return;
     delete ctx.chatMetadata[BG_METADATA_KEY];
     await ctx.saveMetadata();
-    applyScopeMode();
-    toastr.info(t('toast.unlinked'));
-    renderChatBar();
-    renderGrid();
+    applyResolvedBackground();
+    render();
 }
 
 // ── Data refresh ────────────────────────────────────────────────────────────
 async function refresh({ showLoader = false } = {}) {
     const token = ++state.refreshToken;
+    state.refreshController?.abort();
+    const controller = new AbortController();
+    state.refreshController = controller;
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const signal = AbortSignal.any([controller.signal, lifetime.signal]);
     if (showLoader) setLoading(true);
     try {
-        const [backgrounds, folderData, timestamps] = await Promise.all([
-            apiFetchBackgrounds(),
-            apiLoadFolders(),
-            apiLoadImageTimestamps(),
-        ]);
-        if (token !== state.refreshToken) return;
+        // /all generates missing metadata; read memberships and dates afterwards.
+        const backgrounds = await apiFetchBackgrounds(signal);
+        const folderData = await apiLoadBackgroundMetadata(signal).catch(err => {
+            if (token === state.refreshToken && !lifetime.signal.aborted) warn('folder metadata', err);
+            return null;
+        });
+        if (token !== state.refreshToken || lifetime.signal.aborted) return;
         state.backgrounds = backgrounds;
-        state.folders = folderData.folders;
-        state.imageFolderMap = folderData.imageFolderMap;
-        state.timestamps = timestamps;
-        // Validate active folder still exists.
-        if (state.activeFolderId && !state.folders.some((f) => f.id === state.activeFolderId)) {
+        state.libraryLoaded = true;
+        state.foldersReady = !!folderData;
+        state.folders = folderData?.folders ?? [];
+        state.imageFolderMap = folderData?.imageFolderMap ?? Object.create(null);
+        state.timestamps = folderData?.timestamps ?? Object.create(null);
+        if (!folderData) {
             state.activeFolderId = null;
+            toastr.warning(t('status.noFolders'));
+        } else state.activeFolderId = getSettings().activeFolderId;
+        // Validate active folder still exists.
+        const files = new Set(backgrounds.map((b) => b.file));
+        for (const file of state.selected) if (!files.has(file)) state.selected.delete(file);
+        if (state.activeFolderId && !['__all__', '__chat__', '__unfiled__'].includes(state.activeFolderId) && !state.folders.some((f) => f.id === state.activeFolderId)) {
+            state.activeFolderId = null;
+            getSettings().activeFolderId = null;
+            saveSettings();
         }
+        setLoading(false);
+        applyResolvedBackground();
         render();
     } catch (err) {
-        console.error('[BGM] refresh failed', err);
+        if (token !== state.refreshToken) return;
+        warn('refresh', err);
         setEmptyMessage(t('toast.error'));
         toastr.error(t('toast.error'));
     } finally {
-        if (showLoader) setLoading(false);
+        clearTimeout(timeout);
+        controller.abort();
+        if (token === state.refreshToken) {
+            state.refreshController = null;
+            setLoading(false);
+        }
     }
 }
 
 // ── Filtering / sorting ─────────────────────────────────────────────────────
-function getVisibleBackgrounds() {
+function getVisibleBackgrounds(snapshot = createRenderSnapshot()) {
     const term = state.search.trim().toLowerCase();
     const folder = state.activeFolderId;
 
@@ -757,7 +956,7 @@ function getVisibleBackgrounds() {
             const fids = state.imageFolderMap[bg.file];
             if (fids && fids.length) return false;
         } else if (folder === '__chat__') {
-            if (!isLinkedToChat(bg.file)) return false;
+            if (snapshot.linkedFile !== bg.file) return false;
         } else if (folder && folder !== '__all__') {
             const fids = state.imageFolderMap[bg.file];
             if (!fids || !fids.includes(folder)) return false;
@@ -769,15 +968,14 @@ function getVisibleBackgrounds() {
     const cmp = (a, b) => a.file.localeCompare(b.file, undefined, { sensitivity: 'base' });
     // Missing timestamps sort as 0, tie-broken by name for stability.
     const ts = (b) => state.timestamps[b.file] ?? 0;
-    switch (state.sort) {
-        case 'za': list.sort((a, b) => cmp(b, a)); break;
-        case 'newest': list.sort((a, b) => ts(b) - ts(a) || cmp(a, b)); break;
-        case 'oldest': list.sort((a, b) => ts(a) - ts(b) || cmp(a, b)); break;
-        case 'az':
-        default: list.sort(cmp); break;
-    }
-    // Float the chat-linked background to the top (stable hoist).
-    list.sort((a, b) => (isLinkedToChat(b.file) ? 1 : 0) - (isLinkedToChat(a.file) ? 1 : 0));
+    list.sort((a, b) => {
+        const linked = Number(b.file === snapshot.linkedFile) - Number(a.file === snapshot.linkedFile);
+        if (linked) return linked;
+        if (state.sort === 'za') return cmp(b, a);
+        if (state.sort === 'newest') return ts(b) - ts(a) || cmp(a, b);
+        if (state.sort === 'oldest') return ts(a) - ts(b) || cmp(a, b);
+        return cmp(a, b);
+    });
     return list;
 }
 
@@ -793,45 +991,56 @@ function setEmptyMessage(msg = '') {
     state.dom.empty.classList.toggle('bgm_hidden', !msg);
 }
 
+function createRenderSnapshot() {
+    const settings = getSettings();
+    const lockedUrl = getLockedBgUrl();
+    const assignedUrl = getAssignedUrl(settings.assignmentScope);
+    const linkedFile = fileFromBackgroundUrl(lockedUrl);
+    const assignedFile = fileFromBackgroundUrl(assignedUrl);
+    return {
+        settings, linkedFile, assignedFile, globalFile: getGlobalBgName(),
+        target: getAssignmentTarget(settings.assignmentScope),
+        folderNames: new Map(state.folders.map((folder) => [folder.id, folder.name])),
+    };
+}
+
 function render() {
     if (!state.dom.modal || !state.isOpen) return;
-    renderChatBar();
-    renderGlobalCard();
-    renderFolderTree();
-    renderGrid();
-    renderHeader();
+    const snapshot = createRenderSnapshot();
+    renderSpotlight();
+    renderFolderTree(snapshot);
+    renderGrid(snapshot);
     updateSelectUI();
 }
 
-// Render the Global-background card (the single place to view/change global).
-function renderGlobalCard() {
-    const { globalThumb, globalName } = state.dom;
+function renderSpotlight() {
+    const { globalThumb, globalName, targetName, assignmentScope, clearAssignment: clearButton } = state.dom;
     if (!globalName) return;
-    const file = getGlobalBgName();
-    if (file && state.backgrounds.some((b) => b.file === file)) {
-        globalName.textContent = stripExtension(file);
-        if (globalThumb) {
-            globalThumb.style.backgroundImage = getBackgroundCssUrl(file);
-            globalThumb.classList.remove('is-empty');
-        }
-    } else {
-        globalName.textContent = t('global.none');
-        if (globalThumb) {
-            globalThumb.style.backgroundImage = '';
-            globalThumb.classList.add('is-empty');
-        }
-    }
+    const scope = getSettings().assignmentScope;
+    const target = getAssignmentTarget(scope);
+    const active = resolveBackground();
+    const assigned = getAssignedUrl(scope, target);
+    const file = fileFromBackgroundUrl(assigned);
+    const bg = state.backgrounds.find(b => b.file === file);
+    assignmentScope.value = scope;
+    assignmentScope.title = target?.label || t('scope.unavailable');
+    targetName.textContent = [target?.label || t('scope.unavailable'), active.scope !== scope && t('scope.active', { scope: t(`scope.${active.scope}`) })].filter(Boolean).join(' · ');
+    targetName.title = targetName.textContent;
+    globalName.textContent = file ? stripExtension(file) : t(assigned ? 'scope.custom' : 'scope.none');
+    globalName.title = globalName.textContent;
+    globalThumb.replaceChildren();
+    if (bg) globalThumb.appendChild(createPreview(bg));
+    clearButton.disabled = !target || !getAssignedUrl(scope, target) || scope === 'global';
+    const clearLabel = `${t('action.clearAssignment')} · ${t(`scope.${scope}`)}${target ? `: ${target.label}` : ''}`;
+    clearButton.title = clearLabel;
+    clearButton.setAttribute('aria-label', clearLabel);
 }
 
-function renderHeader() {
+function renderHeader(visible = getVisibleBackgrounds()) {
     if (!state.dom.summary) return;
-    const visible = getVisibleBackgrounds().length;
-    state.dom.summary.textContent = `${visible} / ${state.backgrounds.length}`;
+    state.dom.summary.textContent = `${visible.length} / ${state.backgrounds.length}`;
     if (state.dom.breadcrumb) {
         state.dom.breadcrumb.textContent = getActiveFolderLabel();
-    }
-    if (state.dom.sidebarToggleLabel) {
-        state.dom.sidebarToggleLabel.textContent = getActiveFolderLabel();
     }
 }
 
@@ -843,21 +1052,6 @@ function getActiveFolderLabel() {
     return state.folders.find((f) => f.id === id)?.name || t('folder.allBackgrounds');
 }
 
-function renderChatBar() {
-    if (!state.dom.chatBarText) return;
-    const perChat = isPerChatMode();
-    // Mode preference, not a per-chat action — always available.
-    state.dom.chatBarText.textContent = perChat
-        ? t('chat.bar.modePerChat')
-        : t('chat.bar.modeGlobal');
-
-    state.dom.scopeGlobal?.classList.toggle('is-active', !perChat);
-    state.dom.scopeChat?.classList.toggle('is-active', perChat);
-    state.dom.scopeGlobal?.removeAttribute('disabled');
-    state.dom.scopeChat?.removeAttribute('disabled');
-    state.dom.chatBar?.classList.toggle('is-linked', perChat);
-}
-
 // The active sidebar folder id, but only when it's a real folder (not one of
 // the virtual views or "all"). Returns null otherwise.
 function getActiveRealFolderId() {
@@ -867,24 +1061,39 @@ function getActiveRealFolderId() {
 }
 
 // Folder names a file belongs to (synchronous; reads the already-loaded map).
-function foldersOfFile(file) {
+function foldersOfFile(file, names) {
     const ids = state.imageFolderMap[file];
     if (!Array.isArray(ids) || !ids.length) return [];
     return ids
-        .map((id) => state.folders.find((f) => f.id === id)?.name)
+        .map((id) => names.get(id))
         .filter((n) => typeof n === 'string' && n);
 }
 
 function countForFolder(id) {
-    if (id === '__all__') return state.backgrounds.length;
-    if (id === '__unfiled__') return state.backgrounds.filter((b) => !(state.imageFolderMap[b.file]?.length)).length;
-    if (id === '__chat__') return state.backgrounds.filter((b) => isLinkedToChat(b.file)).length;
-    return state.backgrounds.filter((b) => state.imageFolderMap[b.file]?.includes(id)).length;
+    return state.folderCounts.get(id) || 0;
 }
 
-function renderFolderTree() {
+function renderFolderTree(snapshot) {
+    for (const control of ['sidebarToggle', 'newFolder', 'bulkMove', 'bulkAdd']) state.dom[control].disabled = !state.foldersReady;
+    if (!state.foldersReady) {
+        state.dom.folderTree.replaceChildren();
+        state.dom.sidebar.classList.add('is-collapsed');
+        state.dom.sidebarToggle.setAttribute('aria-expanded', 'false');
+        return;
+    }
     const tree = state.dom.folderTree;
     if (!tree) return;
+    const focused = tree.contains(document.activeElement) ? document.activeElement : null;
+    const folderId = focused?.dataset.folderId;
+    const action = focused?.dataset.bgmFolderAction;
+    state.folderCounts = new Map([['__all__', state.backgrounds.length]]);
+    const increment = (id) => state.folderCounts.set(id, countForFolder(id) + 1);
+    for (const bg of state.backgrounds) {
+        const ids = state.imageFolderMap[bg.file];
+        if (Array.isArray(ids) && ids.length) new Set(ids).forEach(increment);
+        else increment('__unfiled__');
+        if (snapshot.linkedFile === bg.file) increment('__chat__');
+    }
     tree.innerHTML = '';
 
     tree.appendChild(createVirtualRow('__all__', t('folder.allBackgrounds'), 'fa-layer-group', false));
@@ -897,6 +1106,10 @@ function renderFolderTree() {
         .slice()
         .sort((a, b) => String(a.name).localeCompare(String(b.name)))
         .forEach((folder) => tree.appendChild(createFolderRow(folder)));
+    if (focused) {
+        const control = [...tree.querySelectorAll('button')].find((el) => el.dataset.folderId === folderId && el.dataset.bgmFolderAction === action);
+        (control || state.dom.sidebarToggle).focus({ preventScroll: true });
+    }
 }
 
 function createVirtualRow(id, label, icon, dropTarget) {
@@ -913,6 +1126,7 @@ function createVirtualRow(id, label, icon, dropTarget) {
     button.className = 'bgm_folder_button';
     button.dataset.bgmFolderAction = 'select';
     button.dataset.folderId = id;
+    button.setAttribute('aria-pressed', String(state.activeFolderId === id || (!state.activeFolderId && id === '__all__')));
 
     const i = document.createElement('i');
     i.className = `fa-solid ${icon}`;
@@ -939,6 +1153,7 @@ function createFolderRow(folder) {
     button.className = 'bgm_folder_button';
     button.dataset.bgmFolderAction = 'select';
     button.dataset.folderId = folder.id;
+    button.setAttribute('aria-pressed', String(state.activeFolderId === folder.id));
 
     const i = document.createElement('i');
     i.className = 'fa-solid fa-folder';
@@ -993,23 +1208,49 @@ function getBackgroundsOnPage(visible) {
     return visible.slice(start, start + state.pageSize);
 }
 
-function renderGrid() {
+function renderGrid(snapshot = createRenderSnapshot()) {
     const grid = state.dom.grid;
-    if (!grid) return;
-    grid.dataset.thumb = getSettings().thumbSize;
+    if (!grid || !state.isOpen) return;
+    if (state.inlineEditor?.isConnected) return;
+    const focused = grid.contains(document.activeElement) ? document.activeElement
+        : state.dom.cardMenu?.contains(document.activeElement) ? cardMenuOpener : null;
+    const file = focused?.closest('.bgm_row')?.dataset.bgmFile;
+    const action = focused?.dataset.bgmCardAction || 'rename-inline';
+    closeCardMenu();
+    const settings = snapshot.settings;
+    grid.dataset.thumb = settings.thumbSize;
+    grid.dataset.view = settings.view;
+    grid.style.setProperty('--bgm-columns', settings.gridColumns === 'auto' ? '4' : settings.gridColumns);
+    grid.dataset.columns = settings.gridColumns;
+    grid.style.setProperty('--bgm-card-ratio', settings.aspectRatio);
+    state.dom.view.setAttribute('aria-pressed', String(settings.view === 'grid'));
+    const viewLabel = t(settings.view === 'grid' ? 'toolbar.viewRows' : 'toolbar.viewGrid');
+    state.dom.view.title = viewLabel;
+    state.dom.view.querySelector('span').textContent = viewLabel;
+    state.dom.view.setAttribute('aria-label', viewLabel);
+    state.dom.view.firstElementChild.className = `fa-solid ${settings.view === 'grid' ? 'fa-list' : 'fa-grip'}`;
 
-    const visible = getVisibleBackgrounds();
+    const visible = getVisibleBackgrounds(snapshot);
+    renderHeader(visible);
     grid.innerHTML = '';
 
     if (!visible.length) {
         setEmptyMessage(state.isLoading ? '' : t('status.empty'));
         renderPager(0);
+        updateSelectUI();
+        if (focused) grid.focus({ preventScroll: true });
         return;
     }
     setEmptyMessage('');
 
-    getBackgroundsOnPage(visible).forEach((bg) => grid.appendChild(createCard(bg)));
+    getBackgroundsOnPage(visible).forEach((bg) => grid.appendChild(createCard(bg, snapshot)));
     renderPager(visible.length);
+    updateSelectUI();
+    if (focused) {
+        const row = [...grid.children].find((el) => el.dataset.bgmFile === file);
+        const control = row && [...row.querySelectorAll('[data-bgm-card-action]')].find((el) => el.dataset.bgmCardAction === action);
+        (control || grid).focus({ preventScroll: true });
+    }
 }
 
 // Pager: « prev · page X / Y · A–B of N · next ». Hidden when a single page.
@@ -1043,10 +1284,30 @@ function goToPage(delta) {
     state.dom.grid?.scrollTo?.({ top: 0 });
 }
 
-// Row layout: [✓] [thumb] [name + badges] [actions]. One baseline so action
-// buttons are never clipped.
-function createCard(bg) {
-    const linked = isLinkedToChat(bg.file);
+function createPreview(bg) {
+    if (bg.isAnimated) {
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-film bgm_preview_placeholder';
+        icon.setAttribute('aria-hidden', 'true');
+        return icon;
+    }
+    const img = document.createElement('img');
+    img.src = `/thumbnail?type=bg&file=${encodeURIComponent(bg.file)}`;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.draggable = false;
+    img.addEventListener('error', () => {
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-image bgm_preview_placeholder';
+        icon.setAttribute('aria-hidden', 'true');
+        img.replaceWith(icon);
+    }, { once: true });
+    return img;
+}
+
+function createCard(bg, snapshot) {
+    const linked = snapshot.linkedFile === bg.file;
 
     const card = document.createElement('article');
     card.className = 'bgm_row';
@@ -1061,22 +1322,20 @@ function createCard(bg) {
     checkbox.type = 'button';
     checkbox.className = 'bgm_row_check';
     checkbox.dataset.bgmCardAction = 'toggle-select';
-    checkbox.setAttribute('aria-label', 'Select');
+    checkbox.setAttribute('aria-label', `${t('action.select')}: ${bg.file}`);
+    checkbox.setAttribute('aria-pressed', String(state.selected.has(bg.file)));
     checkbox.innerHTML = state.selected.has(bg.file)
         ? '<i class="fa-solid fa-square-check"></i>'
         : '<i class="fa-regular fa-square"></i>';
 
-    // Thumbnail. Click links/unlinks in per-chat mode; inert in global mode.
-    const thumb = document.createElement('div');
+    const thumb = document.createElement('button');
+    thumb.type = 'button';
     thumb.className = 'bgm_row_thumb';
-    thumb.style.backgroundImage = getBackgroundCssUrl(bg.file);
+    thumb.appendChild(createPreview(bg));
     thumb.title = bg.file;
-    thumb.dataset.bgmCardAction = linked ? 'unlink-chat' : 'link-chat';
-    if (!isPerChatMode()) {
-        thumb.classList.add('bgm_disabled', 'bgm_disabled_mode');
-    } else if (!hasOpenChat()) {
-        thumb.classList.add('bgm_disabled');
-    }
+    thumb.setAttribute('aria-label', `${t('action.assign')}: ${bg.file}`);
+    thumb.dataset.bgmCardAction = 'assign';
+    thumb.disabled = !snapshot.target;
     if (bg.isAnimated) {
         const film = document.createElement('span');
         film.className = 'bgm_row_thumb_film';
@@ -1088,19 +1347,22 @@ function createCard(bg) {
     const main = document.createElement('div');
     main.className = 'bgm_row_main';
 
-    const title = document.createElement('span');
+    const title = document.createElement('button');
+    title.type = 'button';
     title.className = 'bgm_row_title';
     title.textContent = stripExtension(bg.file);
-    title.title = t('card.rename');
+    title.title = bg.file;
+    title.setAttribute('aria-label', `${t('card.rename')}: ${bg.file}`);
     title.dataset.bgmCardAction = 'rename-inline';
     title.tabIndex = 0;
 
     const meta = document.createElement('div');
     meta.className = 'bgm_row_meta';
-    // Rows show Linked/Animated/In-folder; global is set in the card above.
     if (linked) meta.appendChild(makeBadge(t('badge.linked'), 'fa-link', 'is-linked'));
+    if (bg.file === snapshot.globalFile) meta.appendChild(makeBadge(t('scope.global'), 'fa-globe', 'is-global'));
+    if (snapshot.assignedFile === bg.file) card.classList.add('is-assigned');
     if (bg.isAnimated) meta.appendChild(makeBadge(t('badge.animated'), 'fa-film', 'is-animated'));
-    const folderNames = foldersOfFile(bg.file);
+    const folderNames = foldersOfFile(bg.file, snapshot.folderNames);
     if (folderNames.length) {
         const label = folderNames.length === 1 ? folderNames[0] : t('badge.inFolders', { n: folderNames.length });
         const badge = makeBadge(label, 'fa-folder', 'is-folder');
@@ -1114,39 +1376,11 @@ function createCard(bg) {
     const actions = document.createElement('div');
     actions.className = 'bgm_row_actions';
 
-    // Link toggle. Active when linked; enabled only in per-chat mode with a chat.
-    const linkBtn = cardIconButton(
-        linked ? 'unlink-chat' : 'link-chat',
-        linked ? t('card.unlinkChat') : t('card.linkChat'),
-        linked ? 'fa-link-slash' : 'fa-link',
-    );
-    linkBtn.classList.add('bgm_row_btn', 'bgm_row_btn_link');
-    if (!isPerChatMode()) {
-        linkBtn.classList.add('bgm_disabled', 'bgm_disabled_mode');
-        linkBtn.title = t('card.linkDisabledMode');
-        linkBtn.setAttribute('aria-label', t('card.linkDisabledMode'));
-    } else if (!hasOpenChat()) {
-        linkBtn.classList.add('bgm_disabled');
-    }
-    if (linked) linkBtn.classList.add('is-active');
-
-    const renameBtn = cardIconButton('rename', t('card.rename'), 'fa-pencil');
-    renameBtn.classList.add('bgm_row_btn');
-    const moveBtn = cardIconButton('move', t('card.move'), 'fa-folder-open');
-    moveBtn.classList.add('bgm_row_btn');
-    const deleteBtn = cardIconButton('delete', t('card.delete'), 'fa-trash-can');
-    deleteBtn.classList.add('bgm_row_btn', 'bgm_row_btn_danger');
-
-    actions.append(linkBtn, renameBtn, moveBtn);
-
-    // Inside a real folder view: quick "remove from this folder" (→ Unfiled).
-    if (getActiveRealFolderId()) {
-        const removeBtn = cardIconButton('remove-from-folder', t('card.removeFromFolder'), 'fa-folder-minus');
-        removeBtn.classList.add('bgm_row_btn');
-        actions.append(removeBtn);
-    }
-
-    actions.append(deleteBtn);
+    const more = cardIconButton('more', t('toolbar.more'), 'fa-ellipsis');
+    more.classList.add('bgm_row_btn', 'bgm_row_more');
+    more.setAttribute('aria-controls', 'bgm_card_menu');
+    more.setAttribute('aria-expanded', 'false');
+    actions.append(more);
 
     card.append(checkbox, thumb, main, actions);
     return card;
@@ -1159,6 +1393,7 @@ function makeBadge(label, icon, cls) {
     i.className = `fa-solid ${icon}`;
     const span = document.createElement('span');
     span.textContent = label;
+    b.title = label;
     b.append(i, span);
     return b;
 }
@@ -1176,6 +1411,7 @@ function cardIconButton(action, label, icon) {
 
 // ── Selection ────────────────────────────────────────────────────────────────
 function toggleSelection(file) {
+    state.selectionMode = true;
     if (state.selected.has(file)) state.selected.delete(file);
     else state.selected.add(file);
     updateSelectUI();
@@ -1183,19 +1419,34 @@ function toggleSelection(file) {
 
 function clearSelection() {
     state.selected.clear();
+    state.selectionMode = false;
     updateSelectUI();
 }
 
 function updateSelectUI() {
     const count = state.selected.size;
-    state.dom.selectBar?.classList.toggle('bgm_hidden', count === 0);
-    if (state.dom.selectCount) state.dom.selectCount.textContent = `${count} selected`;
+    const selecting = state.selectionMode || count > 0;
+    const targetAvailable = Boolean(getAssignmentTarget(getSettings().assignmentScope));
+    if (!selecting && state.isOpen && state.dom.selectBar?.contains(document.activeElement)) state.dom.grid?.focus({ preventScroll: true });
+    state.dom.modal?.setAttribute('data-selecting', String(selecting));
+    state.dom.selectMode?.setAttribute('aria-pressed', String(selecting));
+    state.dom.selectBar?.classList.toggle('bgm_hidden', !selecting);
+    if (state.dom.selectCount) state.dom.selectCount.textContent = count ? t('action.selected', { n: count }) : t('selection.empty');
+    for (const button of [state.dom.bulkMove, state.dom.bulkAdd, state.dom.bulkDelete]) {
+        if (button) button.disabled = count === 0 || (!state.foldersReady && button !== state.dom.bulkDelete);
+    }
     state.dom.grid?.querySelectorAll('.bgm_row').forEach((card) => {
         const file = card.dataset.bgmFile;
         const sel = state.selected.has(file);
         card.classList.toggle('is-selected', sel);
+        card.querySelector('.bgm_row_check')?.setAttribute('aria-pressed', String(sel));
         const icon = card.querySelector('.bgm_row_check i');
         if (icon) icon.className = sel ? 'fa-solid fa-square-check' : 'fa-regular fa-square';
+        const thumb = card.querySelector('.bgm_row_thumb');
+        if (thumb) {
+            thumb.disabled = !selecting && !targetAvailable;
+            thumb.setAttribute('aria-label', `${t(selecting ? 'action.select' : 'action.assign')}: ${file}`);
+        }
     });
 }
 
@@ -1210,17 +1461,23 @@ async function onCardAction(action, file) {
     if (!bg) return;
 
     switch (action) {
-        case 'link-chat':
-            if (await maybeConfirmApply()) await linkToChat(file);
+        case 'toggle-select':
+            toggleSelection(file);
             break;
-        case 'unlink-chat':
-            await unlinkFromChat();
+        case 'assign': {
+            const scope = getSettings().assignmentScope;
+            const target = getAssignmentTarget(scope);
+            if (await maybeConfirmApply()) await assignBackground(file, scope, target);
             break;
+        }
         case 'rename':
             await renameBackground(file);
             break;
         case 'move':
             await moveBackgroundToFolder(file);
+            break;
+        case 'add-to-folder':
+            await moveBackgroundToFolder(file, true);
             break;
         case 'remove-from-folder':
             await removeFromActiveFolder(file);
@@ -1247,34 +1504,40 @@ async function commitRename(file, newBaseName) {
     const current = stripExtension(file);
     const safe = sanitizeNameComponent(newBaseName);
     if (!safe || safe === current) return false;
-    const newFile = ext ? `${safe}.${ext}` : safe;
+    const newFile = uniqueUploadName({ name: ext ? `${safe}.${ext}` : safe, type: '' }, new Set());
+    if (newFile === file) return false;
     if (!isSafeBackgroundFile(newFile)) {
         toastr.error(t('toast.error'));
         return false;
     }
-    if (state.backgrounds.some((b) => b.file === newFile)) {
+    if (state.backgrounds.some((b) => b.file !== file && b.file.normalize('NFC').toLowerCase() === newFile.normalize('NFC').toLowerCase())) {
         toastr.warning(t('toast.nameExists'));
         return false;
     }
     try {
         setLoading(true);
-        const wasGlobal = file === getGlobalBgName();
         const wasLinked = isLinkedToChat(file);
+        const chatTarget = getAssignmentTarget('chat');
         await apiRenameBackground(file, newFile);
+        repairAssignments(file, newFile);
+        if (state.selected.delete(file)) state.selected.add(newFile);
+        state.backgrounds = state.backgrounds.map((bg) => bg.file === file ? { ...bg, file: newFile } : bg);
 
         // Re-point old references.
-        if (wasLinked) {
+        if (wasLinked && sameTarget('chat', chatTarget) && isLinkedToChat(file)) {
             const ctx = getContext();
             ctx.chatMetadata[BG_METADATA_KEY] = getBackgroundCssUrl(newFile);
-            await ctx.saveMetadata();
+            try { await ctx.saveMetadata(); }
+            catch (err) { warn('rename references', err); toastr.warning(t('toast.referenceUpdateFailed')); }
         }
-        if (wasGlobal) await applyGlobal(newFile);
+        await applyGlobal(newFile, file);
+        applyResolvedBackground();
 
         await refresh();
         toastr.success(t('toast.renamed'));
         return true;
     } catch (err) {
-        console.error('[BGM] rename failed', err);
+        warn('rename', err);
         toastr.error(t('toast.error'));
         return false;
     } finally {
@@ -1282,8 +1545,9 @@ async function commitRename(file, newBaseName) {
     }
 }
 
-// Inline rename: swap the title span for a text input.
+// Inline rename: swap the title button for a text input.
 function startInlineRename(card, file) {
+    if (state.actionBusy) { toastr.info(t('toast.busy')); return; }
     const titleSpan = card.querySelector('.bgm_row_title');
     if (!titleSpan || card.querySelector('.bgm_row_name_input')) return;
 
@@ -1298,6 +1562,7 @@ function startInlineRename(card, file) {
     input.addEventListener('click', (e) => e.stopPropagation());
 
     titleSpan.replaceWith(input);
+    state.inlineEditor = input;
 
     input.focus();
     input.select();
@@ -1306,8 +1571,9 @@ function startInlineRename(card, file) {
     const finish = async (commit) => {
         if (done) return;
         done = true;
+        state.inlineEditor = null;
         if (commit) {
-            const ok = await commitRename(file, input.value);
+            const ok = await runAction(() => commitRename(file, input.value));
             if (!ok) renderGrid(); // restore original row if nothing changed
         } else {
             renderGrid();
@@ -1316,7 +1582,7 @@ function startInlineRename(card, file) {
 
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-        else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
     });
     input.addEventListener('blur', () => finish(true));
 }
@@ -1326,34 +1592,79 @@ async function deleteBackground(file) {
     if (!ok) return;
     try {
         setLoading(true);
-        // Drop a dangling lock first.
-        if (isLinkedToChat(file)) await unlinkFromChat();
         await apiDeleteBackground(file);
+        state.backgrounds = state.backgrounds.filter((bg) => bg.file !== file);
         state.selected.delete(file);
-        await refresh();
+        try { await removeBackgroundReferences(file); }
+        catch (err) { warn('delete references', err); toastr.warning(t('toast.referenceUpdateFailed')); }
         toastr.success(t('toast.deleted'));
     } catch (err) {
-        console.error('[BGM] delete failed', err);
+        warn('delete', err);
         toastr.error(t('toast.error'));
     } finally {
         setLoading(false);
+        await refresh();
     }
 }
 
-async function moveBackgroundToFolder(file) {
-    const folderId = await pickFolder();
-    if (folderId === undefined) return; // cancelled
-    try {
-        const current = state.imageFolderMap[file] || [];
-        // Remove from existing folders, then assign to the chosen one (or none).
-        for (const fid of current) await apiFolderAssign([file], fid, true);
-        if (folderId) await apiFolderAssign([file], folderId, false);
-        await refresh();
-        toastr.success(t('toast.moved'));
-    } catch (err) {
-        console.error('[BGM] move failed', err);
-        toastr.error(t('toast.error'));
+async function changeFolderMemberships(files, folderId, add = false) {
+    if (!state.foldersReady) throw new Error('Folder metadata unavailable');
+    if (folderId && !state.folders.some((folder) => folder.id === folderId)) throw new Error('Unknown folder');
+    if (add && !folderId) throw new Error('Missing destination folder');
+    const library = new Set(state.backgrounds.map((bg) => bg.file));
+    const targets = [...new Set(files)].filter((file) => isSafeBackgroundFile(file) && library.has(file));
+    const failed = new Set();
+    const removals = new Map();
+    for (const file of targets) {
+        if (add) continue;
+        for (const id of state.imageFolderMap[file] || []) {
+            if (id === folderId) continue;
+            if (!removals.has(id)) removals.set(id, []);
+            removals.get(id).push(file);
+        }
     }
+    const additions = folderId ? targets.filter((file) => !(state.imageFolderMap[file] || []).includes(folderId)) : [];
+    // Keep existing memberships intact if assigning the destination fails.
+    if (additions.length) {
+        await apiFolderAssign(additions, folderId, false);
+        for (const file of additions) state.imageFolderMap[file] = [...(state.imageFolderMap[file] || []), folderId];
+    }
+    for (const [id, members] of removals) {
+        try {
+            await apiFolderAssign(members, id, true);
+            for (const file of members) state.imageFolderMap[file] = (state.imageFolderMap[file] || []).filter((value) => value !== id);
+        } catch (err) {
+            warn('folder membership', err);
+            for (const file of members) failed.add(file);
+        }
+    }
+    return { files: targets, failed };
+}
+
+async function performFolderChange(files, folderId, add = false) {
+    try {
+        const result = await changeFolderMemberships(files, folderId, add);
+        for (const file of result.files) {
+            if (result.failed.has(file)) state.selected.add(file);
+            else state.selected.delete(file);
+        }
+        if (result.failed.size) {
+            toastr.warning(t('toast.folderPartial', { ok: result.files.length - result.failed.size, total: result.files.length }));
+        } else if (result.files.length) {
+            toastr.success(t(add ? 'toast.addedToFolder' : 'toast.moved'));
+        }
+    } catch (err) {
+        warn('folder change', err);
+        toastr.error(t('toast.error'));
+    } finally {
+        updateSelectUI();
+        await refresh();
+    }
+}
+
+async function moveBackgroundToFolder(file, add = false) {
+    const folderId = await pickFolder(add);
+    if (folderId !== undefined) await performFolderChange([file], folderId, add);
 }
 
 // Quick-remove a background from the currently open folder (→ Unfiled if it
@@ -1367,13 +1678,17 @@ async function removeFromActiveFolder(file) {
         await refresh();
         toastr.success(t('toast.removedFromFolder'));
     } catch (err) {
-        console.error('[BGM] remove from folder failed', err);
+        warn('remove from folder', err);
         toastr.error(t('toast.error'));
     }
 }
 
 // Folder picker. Returns folderId, '' for none, or undefined if cancelled.
-async function pickFolder() {
+async function pickFolder(add = false) {
+    if (add && !state.folders.length) {
+        toastr.info(t('toast.noFolders'));
+        return undefined;
+    }
     const ctx = getContext();
     const Popup = ctx.Popup;
     const POPUP_TYPE = ctx.POPUP_TYPE;
@@ -1382,11 +1697,13 @@ async function pickFolder() {
     const label = document.createElement('label');
     label.style.display = 'block';
     label.style.marginBottom = '6px';
-    label.textContent = t('prompt.pickFolderText');
+    label.textContent = t(add ? 'prompt.addFolderText' : 'prompt.pickFolderText');
     const select = document.createElement('select');
+    select.id = 'bgm_folder_picker';
+    label.htmlFor = select.id;
     select.className = 'text_pole';
     select.style.width = '100%';
-    select.appendChild(new Option(t('folder.unfiled'), ''));
+    if (!add) select.appendChild(new Option(t('folder.unfiled'), ''));
     state.folders
         .slice()
         .sort((a, b) => String(a.name).localeCompare(String(b.name)))
@@ -1394,7 +1711,7 @@ async function pickFolder() {
     container.append(label, select);
 
     const instance = new Popup(container, POPUP_TYPE?.CONFIRM ?? 2, '', {
-        okButton: t('action.move'),
+        okButton: t(add ? 'action.addToFolder' : 'action.move'),
         cancelButton: t('action.cancel'),
     });
     const result = await instance.show();
@@ -1403,208 +1720,41 @@ async function pickFolder() {
     return select.value;
 }
 
-// One clickable thumbnail tile for the global picker.
-function buildPickTile(bg, current, onPick) {
-    const tile = document.createElement('button');
-    tile.type = 'button';
-    tile.className = 'bgm_pick_tile';
-    tile.dataset.file = bg.file;
-    tile.dataset.name = stripExtension(bg.file).toLowerCase();
-    if (bg.file === current) tile.classList.add('is-current');
-
-    const thumb = document.createElement('div');
-    thumb.className = 'bgm_pick_thumb';
-    thumb.style.backgroundImage = getBackgroundCssUrl(bg.file);
-
-    const name = document.createElement('span');
-    name.className = 'bgm_pick_name';
-    name.textContent = stripExtension(bg.file);
-
-    tile.append(thumb, name);
-    tile.addEventListener('click', () => onPick(bg.file));
-    return tile;
-}
-
-// Group backgrounds by folder. Returns ordered sections:
-// [{ id, name, items[] }] for real folders (A-Z) then an Unfiled section.
-function groupBackgroundsByFolder(list) {
-    const byFolder = new Map(); // folderId -> items
-    const unfiled = [];
-    for (const bg of list) {
-        const ids = state.imageFolderMap[bg.file];
-        if (Array.isArray(ids) && ids.length) {
-            for (const id of ids) {
-                if (!byFolder.has(id)) byFolder.set(id, []);
-                byFolder.get(id).push(bg);
-            }
-        } else {
-            unfiled.push(bg);
-        }
-    }
-    const sections = state.folders
-        .slice()
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-        .filter((f) => byFolder.has(f.id))
-        .map((f) => ({ id: f.id, name: f.name, items: byFolder.get(f.id) }));
-    if (unfiled.length) sections.push({ id: '__unfiled__', name: t('folder.unfiled'), items: unfiled });
-    return sections;
-}
-
-// Global picker: collapsible folder sections + search. A tile click resolves
-// with the chosen file. The first section starts open; the rest are collapsed.
-// The current global background is still highlighted via its tile.
-async function pickGlobalBackground() {
-    const ctx = getContext();
-    const Popup = ctx.Popup;
-    const POPUP_TYPE = ctx.POPUP_TYPE;
-
-    const list = state.backgrounds.slice()
-        .sort((a, b) => a.file.localeCompare(b.file, undefined, { sensitivity: 'base' }));
-    if (!list.length) {
-        toastr.info(t('status.empty'));
-        return undefined;
-    }
-
-    const current = getGlobalBgName();
-
-    const container = document.createElement('div');
-    container.className = 'bgm_pick_wrap';
-
-    const heading = document.createElement('h3');
-    heading.className = 'bgm_pick_heading';
-    heading.textContent = t('prompt.pickGlobalTitle');
-
-    const searchWrap = document.createElement('div');
-    searchWrap.className = 'bgm_pick_search';
-    const searchIcon = document.createElement('i');
-    searchIcon.className = 'fa-solid fa-magnifying-glass';
-    const searchInput = document.createElement('input');
-    searchInput.type = 'search';
-    searchInput.className = 'text_pole';
-    searchInput.placeholder = t('toolbar.search');
-    searchWrap.append(searchIcon, searchInput);
-
-    const sectionsWrap = document.createElement('div');
-    sectionsWrap.className = 'bgm_pick_sections';
-
-    let chosen;
-    const instancePromise = { resolve: null };
-    const onPick = (file) => { chosen = file; instancePromise.resolve?.(); };
-
-    const sections = groupBackgroundsByFolder(list);
-    const sectionEls = [];
-
-    sections.forEach((section, index) => {
-        // Open just the first section by default; the rest start collapsed.
-        const open = index === 0;
-
-        const sectionEl = document.createElement('div');
-        sectionEl.className = 'bgm_pick_section' + (open ? '' : ' is-collapsed');
-
-        const header = document.createElement('button');
-        header.type = 'button';
-        header.className = 'bgm_pick_section_header';
-        const chevron = document.createElement('i');
-        chevron.className = 'fa-solid fa-chevron-down bgm_pick_chevron';
-        const folderIcon = document.createElement('i');
-        folderIcon.className = 'fa-solid fa-folder';
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'bgm_pick_section_name';
-        nameSpan.textContent = section.name;
-        const countSpan = document.createElement('span');
-        countSpan.className = 'bgm_pick_section_count';
-        countSpan.textContent = String(section.items.length);
-        header.append(chevron, folderIcon, nameSpan, countSpan);
-        header.addEventListener('click', () => sectionEl.classList.toggle('is-collapsed'));
-
-        const grid = document.createElement('div');
-        grid.className = 'bgm_pick_grid';
-        section.items.forEach((bg) => grid.appendChild(buildPickTile(bg, current, onPick)));
-
-        sectionEl.append(header, grid);
-        sectionsWrap.appendChild(sectionEl);
-        sectionEls.push({ sectionEl, defaultOpen: open });
-    });
-
-    // Search across all folders; matching sections auto-expand, empties hide.
-    searchInput.addEventListener('input', () => {
-        const q = searchInput.value.trim().toLowerCase();
-        for (const { sectionEl, defaultOpen } of sectionEls) {
-            let anyVisible = false;
-            sectionEl.querySelectorAll('.bgm_pick_tile').forEach((tile) => {
-                const match = !q || tile.dataset.name.includes(q);
-                tile.classList.toggle('bgm_hidden', !match);
-                if (match) anyVisible = true;
-            });
-            sectionEl.classList.toggle('bgm_hidden', !anyVisible);
-            if (q) sectionEl.classList.toggle('is-collapsed', !anyVisible);
-            else sectionEl.classList.toggle('is-collapsed', !defaultOpen);
-        }
-    });
-
-    container.append(heading, searchWrap, sectionsWrap);
-
-    const instance = new Popup(container, POPUP_TYPE?.TEXT ?? 1, '', {
-        okButton: false,
-        cancelButton: t('action.cancel'),
-        wide: true,
-        allowVerticalScrolling: true,
-    });
-    // A tile click confirms the popup.
-    instancePromise.resolve = () => instance.completeAffirmative();
-
-    await instance.show();
-    return chosen;
-}
-
-async function onPickGlobal() {
-    const file = await pickGlobalBackground();
-    if (!file || !isSafeBackgroundFile(file)) return;
-    await applyGlobal(file);
-    renderGlobalCard();
-}
-
-// ── Bulk actions ──────────────────────────────────────────────────────────
 async function bulkDelete() {
     const files = [...state.selected];
     if (!files.length) return;
     const ok = await popup().show.confirm(t('prompt.bulkDeleteTitle', { n: files.length }), t('prompt.deleteText'));
     if (!ok) return;
     let deleted = 0;
+    let referenceFailed = false;
     setLoading(true);
     for (const file of files) {
         try {
-            if (isLinkedToChat(file)) await unlinkFromChat();
             await apiDeleteBackground(file);
             deleted++;
+            state.selected.delete(file);
+            state.backgrounds = state.backgrounds.filter((bg) => bg.file !== file);
+            try { await removeBackgroundReferences(file); }
+            catch (err) { referenceFailed = true; warn('bulk delete references', err); }
         } catch (err) {
-            console.error('[BGM] bulk delete failed for', file, err);
+            warn('bulk delete', err);
         }
     }
     setLoading(false);
-    clearSelection();
+    updateSelectUI();
     await refresh();
-    if (deleted) toastr.success(t('toast.deleted'));
+    if (deleted === files.length) toastr.success(t('toast.deletedMany', { n: deleted }));
+    else if (deleted) toastr.warning(t('toast.deletedPartial', { ok: deleted, total: files.length }));
+    else toastr.error(t('toast.error'));
+    if (referenceFailed) toastr.warning(t('toast.referenceUpdateFailed'));
 }
 
-async function bulkMove() {
+async function bulkMove(add = false) {
     const files = [...state.selected];
     if (!files.length) return;
-    const folderId = await pickFolder();
+    const folderId = await pickFolder(add);
     if (folderId === undefined) return;
-    try {
-        for (const file of files) {
-            const current = state.imageFolderMap[file] || [];
-            for (const fid of current) await apiFolderAssign([file], fid, true);
-        }
-        if (folderId) await apiFolderAssign(files, folderId, false);
-        clearSelection();
-        await refresh();
-        toastr.success(t('toast.moved'));
-    } catch (err) {
-        console.error('[BGM] bulk move failed', err);
-        toastr.error(t('toast.error'));
-    }
+    await performFolderChange(files, folderId, add);
 }
 
 // ── Folder management ─────────────────────────────────────────────────────
@@ -1617,7 +1767,7 @@ async function createFolder() {
         await refresh();
         toastr.success(t('toast.folderCreated'));
     } catch (err) {
-        console.error('[BGM] create folder failed', err);
+        warn('create folder', err);
         toastr.error(t('toast.error'));
     }
 }
@@ -1633,7 +1783,7 @@ async function renameFolder(folderId) {
         render();
         toastr.success(t('toast.folderRenamed'));
     } catch (err) {
-        console.error('[BGM] rename folder failed', err);
+        warn('rename folder', err);
         toastr.error(t('toast.error'));
     }
 }
@@ -1642,51 +1792,97 @@ async function deleteFolder(folderId) {
     const folder = state.folders.find((f) => f.id === folderId);
     if (!folder) return;
     const ok = await popup().show.confirm(
-        t('prompt.deleteFolderTitle', { name: folder.name }),
+        t('prompt.deleteFolderTitle', { name: escapeHtml(folder.name) }),
         t('prompt.deleteFolderText'),
     );
     if (!ok) return;
     try {
         await apiFolderDelete(folderId);
-        if (state.activeFolderId === folderId) state.activeFolderId = null;
+        if (state.activeFolderId === folderId) {
+            state.activeFolderId = null;
+            getSettings().activeFolderId = null;
+            saveSettings();
+        }
         await refresh();
         toastr.success(t('toast.folderDeleted'));
     } catch (err) {
-        console.error('[BGM] delete folder failed', err);
+        warn('delete folder', err);
         toastr.error(t('toast.error'));
     }
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────
+function uniqueUploadName(file, reserved) {
+    const inferred = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
+    const extension = getFileExtension(file.name) || inferred[file.type] || '';
+    let base = sanitizeNameComponent(stripExtension(file.name))
+        .replace(/[\u0080-\u009f]/g, '_').replace(/[. ]+$/g, '') || 'background';
+    if (/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(base)) base = `_${base}`;
+    const key = (name) => name.normalize('NFC').toLowerCase();
+    const encoder = new TextEncoder();
+    const tail = extension ? `.${extension}` : '';
+    for (let number = 0; number <= reserved.size; number++) {
+        const suffix = (number ? ` (${number + 1})` : '') + tail;
+        const budget = 255 - encoder.encode(suffix).length;
+        if (budget < 1) throw new Error('Upload extension is too long');
+        let stem = '';
+        let bytes = 0;
+        for (const char of base) {
+            const size = encoder.encode(char).length;
+            if (bytes + size > budget) break;
+            stem += char;
+            bytes += size;
+        }
+        const name = stem.replace(/[. ]+$/g, '') + suffix;
+        if (!isSafeBackgroundFile(name)) throw new Error('Invalid upload filename');
+        if (!reserved.has(key(name))) {
+            reserved.add(key(name));
+            return name;
+        }
+    }
+    throw new Error('Unable to reserve upload filename');
+}
+
 async function onUploadInput(event) {
     const input = event.target;
     const files = Array.from(input.files || []);
     input.value = '';
     if (!files.length) return;
 
+    const folderId = getActiveRealFolderId();
     setLoading(true);
     let uploaded = 0;
-    for (const file of files) {
-        if (!file || file.size === 0) continue;
-        try {
-            const formData = new FormData();
-            formData.append('avatar', file);
-            await convertVideoIfNeeded(formData);
-            if (!formData.has('avatar')) continue; // conversion failed / aborted
-            const newName = await apiUploadBackground(formData);
-            uploaded++;
-            // Assign to the active folder if one is open.
-            if (newName && isSafeBackgroundFile(newName)
-                && state.activeFolderId
-                && !['__all__', '__unfiled__', '__chat__'].includes(state.activeFolderId)) {
-                try { await apiFolderAssign([newName], state.activeFolderId, false); } catch (_) { /* non-fatal */ }
+    let filingFailed = 0;
+    try {
+        // Refresh names before reserving destinations; stale UI must not cause overwrites.
+        const library = await apiFetchBackgrounds(requestSignal());
+        const reserved = new Set(library.map((bg) => bg.file.normalize('NFC').toLowerCase()));
+        for (const file of files) {
+            if (lifetime.signal.aborted) break;
+            if (!file || file.size === 0) continue;
+            try {
+                const formData = new FormData();
+                formData.append('avatar', file);
+                await convertVideoIfNeeded(formData);
+                const converted = formData.get('avatar');
+                if (!(converted instanceof File) || !converted.size) continue;
+                const name = uniqueUploadName(converted, reserved);
+                formData.set('avatar', converted, name);
+                const newName = await apiUploadBackground(formData);
+                if (!isSafeBackgroundFile(newName) || newName !== name) throw new Error('Unexpected upload filename');
+                uploaded++;
+                if (folderId) {
+                    try { await apiFolderAssign([newName], folderId, false); }
+                    catch (err) { filingFailed++; warn('upload folder', err); }
+                }
+            } catch (err) {
+                warn('upload', err);
             }
-        } catch (err) {
-            console.error('[BGM] upload failed', err);
         }
+    } finally {
+        setLoading(false);
+        if (!lifetime.signal.aborted) await refresh();
     }
-    setLoading(false);
-    await refresh();
     const failed = files.length - uploaded;
     if (uploaded && failed) {
         toastr.warning(t('toast.uploadedPartial', { ok: uploaded, total: files.length }));
@@ -1697,14 +1893,15 @@ async function onUploadInput(event) {
     } else if (failed) {
         toastr.error(t('toast.error'));
     }
+    if (filingFailed) toastr.warning(t('toast.uploadFolderFailed', { n: filingFailed }));
 }
 
 // Convert video uploads via the Video Background Loader global (if installed).
 async function convertVideoIfNeeded(formData) {
     const file = formData.get('avatar');
-    if (!(file instanceof File) || !file.type?.startsWith('video/')) return;
+    if (!(file instanceof File) || !(file.type?.startsWith('video/') || ['mp4', 'webm', 'mov', 'm4v', 'avi', 'mkv'].includes(getFileExtension(file.name)))) return;
     if (typeof globalThis.convertVideoToAnimatedWebp !== 'function') {
-        toastr.warning('Install the Video Background Loader extension to upload videos as backgrounds.');
+        toastr.warning(t('toast.videoLoader'));
         formData.delete('avatar');
         return;
     }
@@ -1717,27 +1914,42 @@ async function convertVideoIfNeeded(formData) {
         const name = `${stripExtension(file.name)}.webp`;
         formData.set('avatar', new File([new Uint8Array(converted)], name, { type: 'image/webp' }));
     } catch (err) {
-        console.error('[BGM] video conversion failed', err);
+        warn('video conversion', err);
         formData.delete('avatar');
     }
 }
 
 // ── Event binding ─────────────────────────────────────────────────────────
-async function ensureDom() {
-    if (state.dom.modal) return;
+let domPromise = null;
+function ensureDom() {
+    if (state.dom.modal) return Promise.resolve();
+    if (!domPromise) domPromise = createDom().finally(() => { domPromise = null; });
+    return domPromise;
+}
+
+async function createDom() {
 
     const host = document.createElement('div');
     host.innerHTML = await getContext().renderExtensionTemplateAsync(EXTENSION_NAME, 'manager');
+    if (lifetime.signal.aborted) return;
     const modal = host.firstElementChild;
     if (!modal) throw new Error('Failed to render Background Manager template');
 
-    // Signature build stamp (CSS [data-build] depends on it).
     modal.dataset.build = buildStamp(VERSION);
     document.body.appendChild(modal);
     i18nApplyDom(modal);
 
     state.dom = {
         modal,
+        view: modal.querySelector('#bgm_view'),
+        selectMode: modal.querySelector('#bgm_select_mode'),
+        nativeControls: modal.querySelector('#bgm_native_controls'),
+        more: modal.querySelector('#bgm_more'),
+        moreMenu: modal.querySelector('#bgm_more_menu'),
+        cardMenu: modal.querySelector('#bgm_card_menu'),
+        assignmentScope: modal.querySelector('#bgm_assignment_scope'),
+        clearAssignment: modal.querySelector('#bgm_clear_assignment'),
+        targetName: modal.querySelector('#bgm_target_name'),
         refresh: modal.querySelector('#bgm_refresh'),
         search: modal.querySelector('#bgm_search'),
         sort: modal.querySelector('#bgm_sort'),
@@ -1760,18 +1972,12 @@ async function ensureDom() {
         selectAll: modal.querySelector('#bgm_select_all'),
         deselectAll: modal.querySelector('#bgm_deselect_all'),
         bulkMove: modal.querySelector('#bgm_bulk_move'),
+        bulkAdd: modal.querySelector('#bgm_bulk_add'),
         bulkDelete: modal.querySelector('#bgm_bulk_delete'),
         sidebar: modal.querySelector('#bgm_sidebar'),
         sidebarToggle: modal.querySelector('#bgm_sidebar_toggle'),
-        sidebarToggleLabel: modal.querySelector('#bgm_sidebar_toggle_label'),
-        chatBar: modal.querySelector('#bgm_chat_bar'),
-        chatBarText: modal.querySelector('#bgm_chat_bar_text'),
-        scopeGlobal: modal.querySelector('#bgm_scope_global'),
-        scopeChat: modal.querySelector('#bgm_scope_chat'),
-        globalCard: modal.querySelector('#bgm_global_card'),
         globalThumb: modal.querySelector('#bgm_global_thumb'),
         globalName: modal.querySelector('#bgm_global_name'),
-        globalChange: modal.querySelector('#bgm_global_change'),
     };
 
     bindEvents();
@@ -1782,9 +1988,57 @@ function bindEvents() {
 
     d.modal.addEventListener('click', (e) => {
         if (e.target.closest('[data-bgm-action="close"]')) closeManager();
+        if (!e.target.closest('.bgm_more_wrap')) closeMoreMenu();
+        if (!e.target.closest('.bgm_card_menu, .bgm_row_more')) closeCardMenu();
     });
-    d.refresh.addEventListener('click', () => refresh({ showLoader: true }));
-    d.search.addEventListener('input', () => { state.search = d.search.value; state.currentPage = 1; renderGrid(); renderHeader(); });
+    d.more.addEventListener('click', () => {
+        closeCardMenu();
+        const open = d.moreMenu.classList.toggle('is-open');
+        d.more.setAttribute('aria-expanded', String(open));
+        if (open) d.sort.focus();
+    });
+    d.view.addEventListener('click', () => {
+        closeMoreMenu(true);
+        const s = getSettings();
+        s.view = s.view === 'grid' ? 'rows' : 'grid';
+        saveSettings();
+        const setting = document.getElementById('bgm_view_setting');
+        if (setting) setting.value = s.view;
+        renderGrid();
+    });
+    d.selectMode.addEventListener('click', () => {
+        closeMoreMenu(true);
+        if (state.selectionMode || state.selected.size) clearSelection();
+        else { state.selectionMode = true; updateSelectUI(); }
+    });
+    d.nativeControls.addEventListener('click', () => runAction(async () => {
+        closeManager();
+        const mod = await loadBgModule();
+        await mod?.getBackgrounds?.();
+        if (lifetime.signal.aborted) return;
+        state.suppressDrawerHijack = true;
+        try { document.getElementById('backgrounds-drawer-toggle')?.click(); }
+        finally { state.suppressDrawerHijack = false; }
+    }));
+    d.assignmentScope.addEventListener('change', () => {
+        getSettings().assignmentScope = d.assignmentScope.value;
+        saveSettings();
+        render();
+    });
+    d.clearAssignment.addEventListener('click', () => runAction(clearAssignment));
+    d.cardMenu.addEventListener('click', (e) => {
+        const button = e.target.closest('[data-bgm-card-action]');
+        if (!button) return;
+        const file = d.cardMenu.dataset.file;
+        closeCardMenu(true);
+        runAction(() => onCardAction(button.dataset.bgmCardAction, file));
+    });
+    d.refresh.addEventListener('click', () => { closeMoreMenu(true); refresh({ showLoader: true }); });
+    d.search.addEventListener('input', () => {
+        state.search = d.search.value;
+        state.currentPage = 1;
+        if (!state.searchFrame) state.searchFrame = requestAnimationFrame(() => { state.searchFrame = 0; renderGrid(); });
+    });
     d.sort.addEventListener('change', () => {
         state.sort = d.sort.value;
         getSettings().sort = state.sort;
@@ -1793,8 +2047,8 @@ function bindEvents() {
         renderGrid();
     });
     d.upload.addEventListener('click', () => d.uploadInput.click());
-    d.uploadInput.addEventListener('change', onUploadInput);
-    d.newFolder.addEventListener('click', createFolder);
+    d.uploadInput.addEventListener('change', (e) => runAction(() => onUploadInput(e)));
+    d.newFolder.addEventListener('click', () => { closeMoreMenu(true); runAction(createFolder); });
 
     d.folderTree.addEventListener('click', onFolderTreeClick);
     d.folderTree.addEventListener('dragover', onFolderDragOver);
@@ -1810,19 +2064,102 @@ function bindEvents() {
 
     d.selectAll.addEventListener('click', onSelectAll);
     d.deselectAll.addEventListener('click', clearSelection);
-    d.bulkMove.addEventListener('click', bulkMove);
-    d.bulkDelete.addEventListener('click', bulkDelete);
+    d.bulkMove.addEventListener('click', () => runAction(bulkMove));
+    d.bulkAdd.addEventListener('click', () => runAction(() => bulkMove(true)));
+    d.bulkDelete.addEventListener('click', () => runAction(bulkDelete));
 
     d.sidebarToggle.addEventListener('click', onSidebarToggle);
-    d.scopeGlobal.addEventListener('click', () => setScopeMode('global'));
-    d.scopeChat.addEventListener('click', () => setScopeMode('per-chat'));
-    d.globalChange?.addEventListener('click', onPickGlobal);
 
-    document.addEventListener('keydown', (e) => {
-        if (state.isOpen && e.key === 'Escape') closeManager();
-    });
+    d.modal.addEventListener('keydown', onManagerKeydown);
 
-    bindTouch();
+}
+
+async function runAction(action) {
+    if (state.actionBusy) { toastr.info(t('toast.busy')); return false; }
+    if (lifetime.signal.aborted) return false;
+    state.actionBusy = true;
+    state.dom.modal?.setAttribute('aria-busy', 'true');
+    try { return await action(); }
+    catch (err) {
+        if (!lifetime.signal.aborted) { warn('action', err); toastr.error(t('toast.error')); }
+        return false;
+    }
+    finally {
+        state.actionBusy = false;
+        state.dom.modal?.setAttribute('aria-busy', 'false');
+    }
+}
+
+function closeMoreMenu(restoreFocus = false) {
+    const d = state.dom;
+    if (!d.moreMenu?.classList.contains('is-open')) return;
+    d.moreMenu.classList.remove('is-open');
+    d.more.setAttribute('aria-expanded', 'false');
+    if (restoreFocus || d.moreMenu.contains(document.activeElement)) d.more.focus({ preventScroll: true });
+}
+
+let cardMenuOpener = null;
+function closeCardMenu(restoreFocus = false) {
+    state.dom.cardMenu?.classList.add('bgm_hidden');
+    cardMenuOpener?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && cardMenuOpener?.isConnected) cardMenuOpener.focus({ preventScroll: true });
+    cardMenuOpener = null;
+}
+
+function openCardMenu(card, opener) {
+    const wasOpen = cardMenuOpener === opener;
+    closeMoreMenu();
+    closeCardMenu();
+    if (wasOpen) return;
+    const menu = state.dom.cardMenu;
+    menu.replaceChildren();
+    menu.dataset.file = card.dataset.bgmFile;
+    const select = cardIconButton('toggle-select', t('action.select'), 'fa-check');
+    const selectLabel = document.createElement('span');
+    selectLabel.textContent = t('action.select');
+    select.appendChild(selectLabel);
+    menu.appendChild(select);
+    for (const [action, key, icon] of [
+        ['rename', 'card.rename', 'fa-pencil'], ['move', 'card.move', 'fa-folder-open'],
+        ['add-to-folder', 'card.addToFolder', 'fa-folder-plus'], ['remove-from-folder', 'card.removeFromFolder', 'fa-folder-minus'],
+        ['delete', 'card.delete', 'fa-trash-can'],
+    ]) {
+        if (action === 'remove-from-folder' && !getActiveRealFolderId()) continue;
+        if (!state.foldersReady && !['rename', 'delete'].includes(action)) continue;
+        const item = cardIconButton(action, t(key), icon);
+        if (action === 'delete') item.classList.add('bgm_btn_danger');
+        const label = document.createElement('span');
+        label.textContent = t(key);
+        item.appendChild(label);
+        menu.appendChild(item);
+    }
+    menu.classList.remove('bgm_hidden');
+    cardMenuOpener = opener;
+    opener.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button')?.focus();
+}
+
+function onManagerKeydown(e) {
+    if (!state.isOpen || e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (cardMenuOpener) closeCardMenu(true);
+        else if (state.dom.moreMenu.classList.contains('is-open')) closeMoreMenu(true);
+        else closeManager();
+    } else if (e.key === 'Tab') {
+        const root = cardMenuOpener ? state.dom.cardMenu
+            : state.dom.moreMenu.classList.contains('is-open') ? state.dom.moreMenu : state.dom.modal;
+        const controls = [...root.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]')].filter((el) => el.getClientRects().length);
+        const first = controls[0];
+        const last = controls.at(-1);
+        if (!first) { e.preventDefault(); state.dom.modal.focus(); return; }
+        if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement))) {
+            e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement))) {
+            e.preventDefault(); first.focus();
+        }
+    }
 }
 
 function onFolderTreeClick(event) {
@@ -1839,9 +2176,9 @@ function onFolderTreeClick(event) {
         render();
         collapseMobileSidebar();
     } else if (action === 'rename-folder') {
-        renameFolder(folderId);
+        runAction(() => renameFolder(folderId));
     } else if (action === 'delete-folder') {
-        deleteFolder(folderId);
+        runAction(() => deleteFolder(folderId));
     }
 }
 
@@ -1854,6 +2191,10 @@ function onGridClick(event) {
 
     if (actionEl) {
         const action = actionEl.dataset.bgmCardAction;
+        if (state.selectionMode && (action === 'rename-inline' || actionEl.classList.contains('bgm_row_thumb'))) {
+            toggleSelection(file);
+            return;
+        }
 
         // Name → inline rename.
         if (action === 'rename-inline') {
@@ -1865,13 +2206,8 @@ function onGridClick(event) {
             toggleSelection(file);
             return;
         }
-        if (actionEl.classList.contains('bgm_disabled')) {
-            toastr.info(actionEl.classList.contains('bgm_disabled_mode')
-                ? t('card.linkDisabledMode')
-                : t('toast.noChat'));
-            return;
-        }
-        onCardAction(action, file);
+        if (action === 'more') { openCardMenu(card, actionEl); return; }
+        runAction(() => onCardAction(action, file));
         return;
     }
 
@@ -1880,33 +2216,28 @@ function onGridClick(event) {
 }
 
 function onSelectAll() {
-    getVisibleBackgrounds().forEach((bg) => state.selected.add(bg.file));
+    state.selectionMode = true;
+    getBackgroundsOnPage(getVisibleBackgrounds()).forEach((bg) => state.selected.add(bg.file));
     updateSelectUI();
-}
-
-// Switch scope mode (preserves per-chat lock data; reversible).
-function setScopeMode(mode) {
-    const next = mode === 'per-chat' ? 'per-chat' : 'global';
-    if (getSettings().bgScope === next) return;
-    getSettings().bgScope = next;
-    saveSettings();
-    applyScopeMode();
-    if (next === 'per-chat' && !hasOpenChat()) toastr.info(t('toast.modePerChatNoChat'));
-    render();
 }
 
 function onSidebarToggle(event) {
     event?.stopPropagation();
+    closeMoreMenu();
+    closeCardMenu();
     const collapsed = state.dom.sidebar.classList.toggle('is-collapsed');
     state.dom.sidebarToggle.classList.toggle('is-open', !collapsed);
+    state.dom.sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function collapseMobileSidebar() {
     const { sidebar, sidebarToggle } = state.dom;
     if (!sidebar || !sidebarToggle) return;
-    if (sidebarToggle.offsetParent === null) return; // desktop
+    if (!window.matchMedia('(max-width: 900px)').matches) return;
+    if (sidebar.contains(document.activeElement)) sidebarToggle.focus({ preventScroll: true });
     sidebar.classList.add('is-collapsed');
     sidebarToggle.classList.remove('is-open');
+    sidebarToggle.setAttribute('aria-expanded', 'false');
 }
 
 // ── Desktop drag & drop ───────────────────────────────────────────────────
@@ -1941,144 +2272,27 @@ async function onFolderDrop(event) {
     if (!target || !file) return;
     event.preventDefault();
     const dropId = target.dataset.bgmDropTarget;
-    await dropFileOnFolder(file, dropId);
+    await runAction(() => dropFileOnFolder(file, dropId));
 }
 
 async function dropFileOnFolder(file, dropId) {
-    try {
-        const current = state.imageFolderMap[file] || [];
-        if (dropId === '__unfiled__') {
-            for (const fid of current) await apiFolderAssign([file], fid, true);
-        } else {
-            for (const fid of current) await apiFolderAssign([file], fid, true);
-            await apiFolderAssign([file], dropId, false);
-        }
-        await refresh();
-        toastr.success(t('toast.moved'));
-    } catch (err) {
-        console.error('[BGM] drop move failed', err);
-        toastr.error(t('toast.error'));
-    }
+    if (!isSafeBackgroundFile(file) || !state.backgrounds.some((bg) => bg.file === file)) return;
+    if (dropId !== '__unfiled__' && !state.folders.some((folder) => folder.id === dropId)) return;
+    await performFolderChange([file], dropId === '__unfiled__' ? '' : dropId);
 }
 
 function clearDropStyles() {
     state.dom.folderTree?.querySelectorAll('.is-drop-target').forEach((n) => n.classList.remove('is-drop-target'));
 }
 
-// ── Touch drag (mobile) ─────────────────────────────────────────────────────
-const touch = {
-    card: null, file: '', startX: 0, startY: 0, active: false,
-    ghost: null, longPressTimer: null, longPressed: false,
-    LONG_PRESS_MS: 350, THRESHOLD: 10,
-};
-
-function isTouchDevice() {
-    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-}
-
-function bindTouch() {
-    if (!isTouchDevice()) return;
-    const grid = state.dom.grid;
-    if (!grid) return;
-    grid.addEventListener('touchstart', onTouchStart, { passive: true });
-    grid.addEventListener('touchmove', onTouchMove, { passive: false });
-    grid.addEventListener('touchend', onTouchEnd, { passive: true });
-    grid.addEventListener('touchcancel', onTouchEnd, { passive: true });
-}
-
-function touchPos(e) {
-    const tp = e.touches?.[0] || e.changedTouches?.[0];
-    return tp ? { x: tp.clientX, y: tp.clientY } : { x: 0, y: 0 };
-}
-
-function onTouchStart(e) {
-    if (e.target.closest('button, select, input, a')) return;
-    const card = e.target.closest('.bgm_row');
-    if (!card) return;
-    const pos = touchPos(e);
-    touch.card = card;
-    touch.file = card.dataset.bgmFile || '';
-    touch.startX = pos.x;
-    touch.startY = pos.y;
-    touch.active = false;
-    touch.longPressed = false;
-    clearTimeout(touch.longPressTimer);
-    touch.longPressTimer = setTimeout(() => {
-        touch.longPressed = true;
-        if (navigator.vibrate) navigator.vibrate(25);
-    }, touch.LONG_PRESS_MS);
-}
-
-function onTouchMove(e) {
-    if (!touch.card) return;
-    const pos = touchPos(e);
-    const dist = Math.hypot(pos.x - touch.startX, pos.y - touch.startY);
-    if (dist > touch.THRESHOLD) clearTimeout(touch.longPressTimer);
-    if (!touch.active && dist > touch.THRESHOLD && touch.longPressed) {
-        touch.active = true;
-        touch.card.classList.add('is-dragging');
-        touch.ghost = makeGhost(touch.card);
-    }
-    if (touch.active) {
-        e.preventDefault();
-        positionGhost(pos.x, pos.y);
-        highlightTouchTarget(pos.x, pos.y);
-    }
-}
-
-async function onTouchEnd(e) {
-    clearTimeout(touch.longPressTimer);
-    if (touch.active) {
-        const pos = touchPos(e);
-        const target = dropTargetAt(pos.x, pos.y);
-        if (target && touch.file) await dropFileOnFolder(touch.file, target.dataset.bgmDropTarget);
-        touch.card?.classList.remove('is-dragging');
-        clearDropStyles();
-        removeGhost();
-    }
-    touch.card = null;
-    touch.file = '';
-    touch.active = false;
-    touch.longPressed = false;
-}
-
-function makeGhost(card) {
-    const ghost = document.createElement('div');
-    ghost.className = 'bgm_drag_ghost';
-    const i = document.createElement('i');
-    i.className = 'fa-solid fa-image';
-    ghost.append(i, document.createTextNode(' ' + (card.querySelector('.bgm_row_title')?.textContent || '?')));
-    document.body.appendChild(ghost);
-    return ghost;
-}
-
-function positionGhost(x, y) {
-    if (!touch.ghost) return;
-    touch.ghost.style.left = `${x}px`;
-    touch.ghost.style.top = `${y}px`;
-}
-
-function removeGhost() {
-    touch.ghost?.remove();
-    touch.ghost = null;
-}
-
-function dropTargetAt(x, y) {
-    if (touch.ghost) touch.ghost.style.display = 'none';
-    const el = document.elementFromPoint(x, y);
-    if (touch.ghost) touch.ghost.style.display = '';
-    return el?.closest('[data-bgm-drop-target]') || null;
-}
-
-function highlightTouchTarget(x, y) {
-    clearDropStyles();
-    dropTargetAt(x, y)?.classList.add('is-drop-target');
-}
-
 // ── Open / close ──────────────────────────────────────────────────────────
 async function openManager() {
     await ensureDom();
+    if (lifetime.signal.aborted) return;
+    if (state.isOpen) return;
+    state.lastFocusedElement = document.activeElement;
     state.isOpen = true;
+    document.body.classList.add('bgm_open');
     state.activeFolderId = getSettings().activeFolderId || null;
     state.sort = getSettings().sort || 'az';
     state.pageSize = Number(getSettings().pageSize) || DEFAULT_SETTINGS.pageSize;
@@ -2087,17 +2301,32 @@ async function openManager() {
     state.dom.search.value = state.search;
     state.dom.sort.value = state.sort;
     collapseNativeBackgroundDrawer();
+    state.dom.modal.focus({ preventScroll: true });
     await loadBgModule();
-    applyScopeMode();
+    if (!state.isOpen) return;
+    applyResolvedBackground();
     await refresh({ showLoader: true });
 }
 
 function closeManager() {
+    cancelAnimationFrame(state.searchFrame);
+    state.searchFrame = 0;
     if (!state.dom.modal) return;
     state.isOpen = false;
+    ++state.refreshToken;
+    state.refreshController?.abort();
+    state.refreshController = null;
+    setLoading(false);
+    document.body.classList.remove('bgm_open');
+    state.inlineEditor = null;
+    closeMoreMenu();
+    closeCardMenu();
     clearSelection();
     state.dom.modal.classList.add('bgm_hidden');
     clearDropStyles();
+    state.dom.grid.replaceChildren();
+    state.dom.globalThumb.replaceChildren();
+    if (state.lastFocusedElement?.isConnected) state.lastFocusedElement.focus({ preventScroll: true });
 }
 
 function collapseNativeBackgroundDrawer() {
@@ -2126,24 +2355,22 @@ function hijackBackgroundDrawer() {
             if (state.isOpen) {
                 closeManager();
             } else {
-                openManager();
+                runAction(openManager);
             }
-        }, true);
+        }, { capture: true, signal: lifetime.signal });
     }
 }
 
-// Bind the drawer hijack once. The native top-bar button is present at load in
-// practice; if not yet, retry a few times with a short delay instead of running
-// a permanent MutationObserver (the old approach re-fired on every mutation
-// inside the native gallery, which made the manager janky to interact with).
+// The native toolbar can become available after extension initialization.
 function startDrawerHijack(attempt = 0) {
+    if (lifetime.signal.aborted) return;
     const button = document.getElementById('backgrounds-drawer-toggle');
     if (button) {
         hijackBackgroundDrawer();
         return;
     }
     if (attempt >= 20) return; // ~5s of bounded retries, then give up
-    setTimeout(() => startDrawerHijack(attempt + 1), 250);
+    state.drawerTimer = setTimeout(() => startDrawerHijack(attempt + 1), 250);
 }
 
 // When the manager is open and the user clicks a different top-bar drawer
@@ -2160,11 +2387,14 @@ function bindTopBarCloseHandlers() {
         // Only react to actual top-bar drawer/menu buttons.
         if (!e.target.closest('.drawer-icon, .drawer-toggle')) return;
         closeManager();
-    }, true); // capture phase, before ST opens the other drawer
+    }, { capture: true, signal: lifetime.signal });
 }
 
 // ── Settings UI ───────────────────────────────────────────────────────────
 function bindSettingsUI() {
+    const root = document.querySelector('.background-manager-settings');
+    if (!root || root.dataset.bgmBound) return;
+    root.dataset.bgmBound = 'true';
     const s = getSettings();
     const $ = (id) => document.getElementById(id);
 
@@ -2173,11 +2403,26 @@ function bindSettingsUI() {
     const confirmApply = $('bgm_confirm_apply');
     const thumbSize = $('bgm_thumb_size');
     const pageSize = $('bgm_page_size');
+    for (const [id, key, values] of [
+        ['bgm_view_setting', 'view', ['rows', 'grid']],
+        ['bgm_grid_columns', 'gridColumns', GRID_COLUMNS],
+        ['bgm_aspect_ratio', 'aspectRatio', ASPECT_RATIOS],
+    ]) {
+        const control = $(id);
+        if (!control) continue;
+        control.value = s[key];
+        control.addEventListener('change', () => {
+            if (!values.includes(control.value)) return;
+            s[key] = control.value;
+            saveSettings();
+            renderGrid();
+        });
+    }
 
-    if (openBtn) openBtn.addEventListener('click', openManager);
+    if (openBtn) openBtn.addEventListener('click', () => runAction(openManager));
     if (hijack) {
         hijack.checked = s.hijackDrawer;
-        hijack.addEventListener('change', () => { s.hijackDrawer = hijack.checked; saveSettings(); });
+        hijack.addEventListener('change', () => { s.hijackDrawer = hijack.checked; saveSettings(); if (s.hijackDrawer) hijackBackgroundDrawer(); });
     }
     if (confirmApply) {
         confirmApply.checked = s.confirmApply;
@@ -2213,37 +2458,71 @@ function bindChatChange() {
         const evt = getEventTypes().CHAT_CHANGED;
         const src = ctx.eventSource;
         if (src && evt) {
-            src.on(evt, () => {
-                // Enforce scope mode on every chat switch (even when closed).
-                applyScopeMode();
-                if (state.isOpen) { renderChatBar(); renderGrid(); }
-            });
+            src.on(evt, scheduleContextUpdate);
+            const ready = getEventTypes().APP_READY;
+            if (ready) src.on(ready, scheduleContextUpdate);
+            state.eventSource = src;
+            const forced = getEventTypes().FORCE_SET_BACKGROUND;
+            if (forced) src.on(forced, scheduleContextUpdate);
+            const settings = getEventTypes().SETTINGS_UPDATED;
+            if (settings) src.on(settings, onNativeSettingsUpdate);
+            state.contextEvents = [evt, ready, forced].filter(Boolean);
             state.boundChatHandler = true;
         }
     } catch (err) {
-        console.error('[BGM] failed to bind CHAT_CHANGED', err);
+        warn('chat events', err);
     }
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
+function cleanup() {
+    closeManager();
+    lifetime.abort();
+    clearTimeout(state.contextTimer);
+    clearTimeout(state.drawerTimer);
+    for (const event of state.contextEvents) state.eventSource?.removeListener(event, scheduleContextUpdate);
+    state.contextEvents = [];
+    state.eventSource?.removeListener(getEventTypes().SETTINGS_UPDATED, onNativeSettingsUpdate);
+    state.backgroundObserver?.disconnect();
+    state.backgroundObserver = null;
+    jQuery(document).off('.bgmTheme');
+    state.dom.modal?.remove();
+    document.querySelector('.background-manager-settings')?.remove();
+    document.getElementById('backgrounds-drawer-toggle')?.removeAttribute('data-bgm-hijacked');
+    document.getElementById('top-settings-holder')?.removeAttribute('data-bgm-top-bar-bound');
+    state.dom = {};
+}
+
+window.addEventListener('pagehide', (event) => {
+    if (!event.persisted) cleanup();
+}, { signal: lifetime.signal });
+
 jQuery(async () => {
     try {
         LANG = detectLang();
         const settingsHtml = await getContext().renderExtensionTemplateAsync(EXTENSION_NAME, 'settings');
+        if (lifetime.signal.aborted) return;
         const wrap = document.createElement('div');
         wrap.innerHTML = settingsHtml;
         i18nApplyDom(wrap);
         document.getElementById('extensions_settings')?.append(...wrap.childNodes);
     } catch (err) {
-        console.error('[BGM] failed to inject settings', err);
+        warn('settings template', err);
     }
 
-    getSettings();
+    const settings = getSettings();
+    if (Object.hasOwn(settings, 'bgScope')) {
+        delete settings.bgScope;
+        saveSettings();
+    }
     bindSettingsUI();
     startDrawerHijack();
     bindTopBarCloseHandlers();
     bindChatChange();
+    observeNativeBackground();
+    // jQuery observes both native dispatchEvent and ThemeAssist's select2 trigger.
+    jQuery(document).off('change.bgmTheme', '#themes').on('change.bgmTheme', '#themes', scheduleContextUpdate);
 
-    // Warm the module, then enforce the saved scope mode on load.
-    loadBgModule().then(() => applyScopeMode());
+    // Resolve assignments once the native global settings are available.
+    loadBgModule().then(() => { if (!lifetime.signal.aborted) scheduleContextUpdate(); });
 });
